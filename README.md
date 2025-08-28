@@ -1,9 +1,9 @@
 # AnySecret.io - Universal Secret & Configuration Management
 
-[![PyPI version](https://badge.fury.io/py/anysecret-io.svg)](https://pypi.org/project/anysecret-io/)
+[![PyPI version](https://img.shields.io/pypi/v/anysecret-io.svg)](https://pypi.org/project/anysecret-io/)
 [![Python Support](https://img.shields.io/pypi/pyversions/anysecret-io.svg)](https://pypi.org/project/anysecret-io/)
-[![Tests](https://github.com/anysecret-io/anysecret-lib/actions/workflows/test.yml/badge.svg)](https://github.com/anysecret-io/anysecret-lib/actions/workflows/test.yml)
-[![Coverage](https://codecov.io/gh/anysecret-io/anysecret-lib/branch/main/graph/badge.svg)](https://codecov.io/gh/anysecret-io/anysecret-lib)
+[![Downloads](https://img.shields.io/pypi/dm/anysecret-io.svg)](https://pypi.org/project/anysecret-io/)
+[![Tests](https://github.com/anysecret-io/anysecret-lib/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/anysecret-io/anysecret-lib/actions/workflows/test.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License](https://img.shields.io/badge/Commercial-License%20Available-green.svg)](https://anysecret.io/license)
 [![Documentation](https://img.shields.io/badge/docs-anysecret.io-blue)](https://anysecret.io)
