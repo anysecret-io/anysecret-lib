@@ -65,19 +65,25 @@ pip install anysecret-io[all]
 
 ```python
 import asyncio
-from anysecret import get_config_manager
+import anysecret
 
 async def main():
-    # Auto-detects environment and configures itself
-    config = await get_config_manager()
+    # Just use .get() - auto-classification handles everything!
     
-    # Get secrets (auto-routed to secure storage)
-    db_password = await config.get_secret("DATABASE_PASSWORD")
-    api_key = await config.get_secret("STRIPE_SECRET_KEY")
+    # These automatically go to secure storage (secrets)
+    db_password = await anysecret.get("database.password")
+    api_key = await anysecret.get("stripe.secret.key")
     
-    # Get parameters (auto-routed to config storage)
-    api_timeout = await config.get_parameter("API_TIMEOUT", default=30)
-    feature_flag = await config.get_parameter("FEATURE_X_ENABLED", default=False)
+    # These automatically go to config storage (parameters)  
+    api_timeout = await anysecret.get("api.timeout", default=30)
+    feature_flag = await anysecret.get("features.new.ui", default=False)
+    
+    # Override auto-classification when needed
+    admin_token = await anysecret.get("admin.token", hint="secret")
+    
+    # Or use explicit methods if you prefer
+    config = await anysecret.get_config_manager()
+    jwt_secret = await config.get_secret("jwt.signing.key")
 
 asyncio.run(main())
 ```
@@ -85,17 +91,23 @@ asyncio.run(main())
 ### CLI Usage
 
 ```bash
-# For Terraform/CloudFormation
-anysecret get database/password --format json
+# Auto-classification works in CLI too!
+anysecret get database.password           # → Secure storage
+anysecret get database.host               # → Config storage
+anysecret get api.timeout                 # → Config storage
 
-# For CI/CD pipelines
-export DB_PASS=$(anysecret get database/password)
+# For Terraform/CloudFormation
+anysecret get stripe.secret.key --format json
+
+# For CI/CD pipelines  
+export DB_HOST=$(anysecret get database.host)
+export DB_PASS=$(anysecret get database.password)
+
+# For Docker - same code works everywhere
+docker run -e DB_HOST=$(anysecret get database.host) myapp
 
 # For Kubernetes
 anysecret get-all --format yaml | kubectl apply -f -
-
-# For Docker
-docker run -e DB_PASS=$(anysecret get db/password) myapp
 ```
 
 ## 🔧 DevOps & CI/CD Integration
