@@ -1,0 +1,19 @@
+# Core dependencies
+cryptography>=3.4.0
+pydantic>=2.0.0
+typing-extensions>=4.0.0; python_version<"3.10"
+typer
+rich
+pytest
+pytest-asyncio
+boto3
+build
+twine
+aiofiles
+PyYAML
+google-cloud-secret-manager
+hvac
+azure-appconfiguration
+azure-identity
+#playwright
+#pytest-playwright

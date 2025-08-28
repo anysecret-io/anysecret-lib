@@ -1,0 +1,11 @@
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+recursive-include paymed_secrets *.py
+recursive-exclude tests *
+recursive-exclude examples *
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *~
+global-exclude .__pycache__

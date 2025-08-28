@@ -1,0 +1,40 @@
+ANYSECRET.IO COMMERCIAL LICENSE
+
+Copyright (C) 2024 AnySecret.io
+
+COMMERCIAL LICENSE AGREEMENT
+
+This Commercial License Agreement ("Agreement") is between AnySecret.io ("Licensor") 
+and the organization obtaining this license ("Licensee").
+
+GRANT OF LICENSE:
+Subject to the terms of this Agreement, Licensor grants Licensee a non-exclusive, 
+non-transferable license to use, modify, and distribute the AnySecret.io software 
+("Software") for commercial purposes, including but not limited to:
+
+1. Integration into proprietary software products
+2. Offering as a managed service or SaaS platform
+3. Distribution as part of commercial hardware/software solutions
+4. Use in closed-source applications
+
+This commercial license removes the copyleft requirements of the AGPL-3.0 license.
+
+RESTRICTIONS:
+- This license does not grant rights to sublicense or redistribute this commercial license
+- Attribution to AnySecret.io must be maintained in derivative works
+- License is valid for the specific version acquired and any patches/updates provided
+
+SUPPORT:
+Commercial license includes priority support and enterprise features as outlined 
+in the purchased support plan.
+
+TERMINATION:
+This license terminates automatically if Licensee breaches any terms. Upon termination,
+Licensee must cease all use of the Software under this commercial license and may 
+only continue use under the terms of the AGPL-3.0 license.
+
+WARRANTY DISCLAIMER:
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.
+
+For licensing terms and pricing, contact: licensing@anysecret.io
+For support, contact: support@anysecret.io
