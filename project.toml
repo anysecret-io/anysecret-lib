@@ -31,10 +31,10 @@ keywords = ["secrets", "secret-management", "cloud", "aws", "gcp", "azure", "vau
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://github.com/starlitlog/anysecret-io"
-Documentation = "https://github.com/starlitlog/anysecret-io#readme"
-Repository = "https://github.com/starlitlog/anysecret-io.git"
-"Bug Tracker" = "https://github.com/starlitlog/anysecret-io/issues"
+Homepage = "https://anysecret-io/"
+Documentation = "https://github.com/anysecret-io/anysecret-lib/docs/quickstart.md"
+Repository = "https://github.com/anysecret-io/anysecret-lib"
+"Bug Tracker" = "https://github.com/anysecret-io/anysecret-lib/issues"
 
 [project.scripts]
 anysecret = "anysecret.cli.main:main"
