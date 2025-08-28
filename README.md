@@ -2,6 +2,8 @@
 
 [![PyPI version](https://badge.fury.io/py/anysecret-io.svg)](https://pypi.org/project/anysecret-io/)
 [![Python Support](https://img.shields.io/pypi/pyversions/anysecret-io.svg)](https://pypi.org/project/anysecret-io/)
+[![Tests](https://github.com/anysecret-io/anysecret-lib/actions/workflows/test.yml/badge.svg)](https://github.com/anysecret-io/anysecret-lib/actions/workflows/test.yml)
+[![Coverage](https://codecov.io/gh/anysecret-io/anysecret-lib/branch/main/graph/badge.svg)](https://codecov.io/gh/anysecret-io/anysecret-lib)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License](https://img.shields.io/badge/Commercial-License%20Available-green.svg)](https://anysecret.io/license)
 [![Documentation](https://img.shields.io/badge/docs-anysecret.io-blue)](https://anysecret.io)
@@ -318,4 +320,4 @@ AnySecret.io is used in production by:
   <a href="https://anysecret.io/docs">Docs</a> • 
   <a href="https://discord.gg/anysecret">Discord</a> • 
   <a href="https://twitter.com/anysecret_io">Twitter</a>
-</p># Test sync trigger
+</p>
