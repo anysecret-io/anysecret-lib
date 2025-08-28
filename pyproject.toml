@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "setuptools-scm>=6.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "anysecret-io"
-version = "0.1.0"
-description = "Universal secret manager for Python applications with multi-cloud support"
+dynamic = ["version"]
+description = "Universal secret manager for applications and CI/CD tools with CLI interface and multi-cloud support"
 authors = [{name = "AnySecret.io Team", email = "hello@anysecret.io"}]
 license = {text = "AGPL-3.0-or-later"}
 readme = "README.md"
@@ -94,6 +94,9 @@ anysecret = "anysecret.cli.main:app"
 
 [tool.setuptools]
 packages = ["anysecret", "anysecret.providers", "anysecret.cli"]
+
+[tool.setuptools_scm]
+fallback_version = "0.1.0-dev"
 
 [tool.black]
 line-length = 100
