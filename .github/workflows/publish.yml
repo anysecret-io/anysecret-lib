@@ -33,6 +33,9 @@ jobs:
   build-and-publish:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
     
     steps:
     - uses: actions/checkout@v4
@@ -73,12 +76,12 @@ jobs:
 
     - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/v')
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref_name }}
-        release_name: Release ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
         body: |
           ## Changes in ${{ github.ref_name }}
           
@@ -87,11 +90,11 @@ jobs:
           ## Installation
           
           ```bash
-          pip install anysecret-io==${{ github.ref_name }}
+          pip install anysecret-io
           ```
           
           ## PyPI Package
           
-          https://pypi.org/project/anysecret-io/${{ github.ref_name }}/
+          https://pypi.org/project/anysecret-io/
         draft: false
         prerelease: ${{ contains(github.ref, 'rc') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
