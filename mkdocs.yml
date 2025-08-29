@@ -1,0 +1,69 @@
+site_name: AnySecret.io Documentation
+site_url: https://docs.anysecret.io
+site_description: Universal secret management for cloud-native applications
+
+repo_url: https://github.com/anysecret-io/anysecret-lib
+repo_name: anysecret-io/anysecret-lib
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+  - swagger-ui-tag
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - Providers: providers.md
+  - API Reference: api.md
+  - Examples: examples.md
+  - Best Practices: best-practices.md
+  - Migration: migration.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/anysecret-io/anysecret-lib
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/anysecret
