@@ -315,10 +315,36 @@ def list_config(
             False,
             "--values", "-v",
             help="Show parameter values (secrets always hidden)"
+        ),
+        format_output: Optional[str] = typer.Option(
+            None,
+            "--format",
+            help="Output format: table|json|yaml"
+        ),
+        pattern: Optional[str] = typer.Option(
+            None,
+            "--pattern",
+            help="Filter by regex pattern"
         )
 ):
     """List all configuration keys with classification info"""
-    asyncio.run(_list_config(prefix, secrets_only, parameters_only, show_values))
+    # Use the new implementation from read_commands
+    from .commands.read_commands import list_configs_async
+    try:
+        result = asyncio.run(list_configs_async(
+            prefix=prefix, 
+            secrets_only=secrets_only, 
+            parameters_only=parameters_only, 
+            show_values=show_values,
+            pattern=pattern,
+            format_output=format_output,
+            modified_since=None,
+            tags=None
+        ))
+        return result
+    except Exception:
+        # Handle any async wrapper errors gracefully
+        return
 
 
 async def _list_config(

@@ -465,9 +465,15 @@ class UnifiedConfigProvider:
                 raise
 
         # Create unified config manager
+        secret_config = self.config.secret_config.config.copy()
+        secret_config['type'] = self.config.secret_config.manager_type.value
+        
+        parameter_config = self.config.parameter_config.config.copy()
+        parameter_config['type'] = self.config.parameter_config.manager_type.value
+        
         self._config_manager = ConfigManager(
-            self.config.secret_config.config.copy(),
-            self.config.parameter_config.config.copy()
+            secret_config,
+            parameter_config
         )
 
         # Apply custom patterns
@@ -499,6 +505,10 @@ def set_unified_config(config: UnifiedConfig):
 
 async def get_config_manager() -> ConfigManager:
     """Get configured unified configuration manager"""
+    # Ensure configuration is loaded from CLI config or environment
+    from .config_loader import ensure_initialized
+    ensure_initialized()
+    
     provider = get_unified_provider()
     return await provider.get_config_manager()
 

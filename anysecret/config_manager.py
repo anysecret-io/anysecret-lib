@@ -77,13 +77,24 @@ class ConfigManager:
         self.parameter_factory = ParameterManagerFactory()
 
         # Initialize managers
-        secret_type = secret_config.get('type')
-        parameter_type = parameter_config.get('type')
+        secret_type_str = secret_config.get('type')
+        parameter_type_str = parameter_config.get('type')
 
-        if not secret_type:
+        if not secret_type_str:
             raise ParameterManagerError("Secret manager type is required")
-        if not parameter_type:
+        if not parameter_type_str:
             raise ParameterManagerError("Parameter manager type is required")
+
+        # Convert strings to enums
+        try:
+            secret_type = SecretManagerType(secret_type_str)
+        except ValueError:
+            raise ParameterManagerError(f"Unknown secret manager type: {secret_type_str}")
+        
+        try:
+            parameter_type = ParameterManagerType(parameter_type_str)
+        except ValueError:
+            raise ParameterManagerError(f"Unknown parameter manager type: {parameter_type_str}")
 
         self.secret_manager = self.secret_factory.create(secret_type, secret_config)
         self.parameter_manager = self.parameter_factory.create_manager(parameter_type, parameter_config)

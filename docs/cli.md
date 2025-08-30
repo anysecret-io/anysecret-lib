@@ -1,0 +1,896 @@
+# AnySecret CLI Reference
+
+## Abstract
+
+AnySecret is a universal configuration and secret management system that intelligently routes configuration data between secrets and parameters based on naming patterns, optimizing for both security and cost.
+
+**Core Concept:**
+- **Primary Provider**: Your main configuration source (AWS, GCP, Azure, Kubernetes, local files, etc.)
+- **Fallback Provider**: Optional secondary source checked when values aren't found in primary
+- **Intelligent Classification**: Automatically routes sensitive data (API_KEY, PASSWORD) to secret managers and configuration data (HOST, PORT, TIMEOUT) to parameter stores
+- **Environment Auto-detection**: Detects cloud environment and suggests optimal provider configuration
+- **Incremental Configuration**: Starts simple with auto-detection, allows more complex setups as needed
+
+**Benefits:**
+- **Cost Optimization**: Parameters are cheaper than secrets in most cloud providers
+- **Security**: Sensitive data automatically uses secure secret managers
+- **Simplicity**: Single interface across all providers with intelligent defaults
+- **Reliability**: Fallback providers ensure availability
+- **Flexibility**: Works in any environment from local development to multi-cloud production
+
+The CLI provides a unified interface for get/set operations that automatically use the right provider for the right data type, with optional fallback chains for high availability.
+
+---
+
+The AnySecret CLI is a comprehensive command-line interface for universal configuration and secret management across multiple cloud providers and environments. It provides intelligent routing, cost optimization, and seamless integration with CI/CD pipelines.
+
+## Table of Contents
+
+1. [Configuration and Metadata](#configuration-and-metadata)
+2. [Write Permissions and Security](#write-permissions-and-security)
+3. [ReadOnly List and Bulk Operations](#readonly-list-and-bulk-operations)
+4. [ReadOnly Item Operations](#readonly-item-operations)
+5. [Write Item Operations](#write-item-operations)
+6. [Sync Migration](#sync-migration)
+7. [Bulk Write Operations](#bulk-write-operations)
+8. [Environment Management](#environment-management)
+9. [CI/CD Integration](#cicd-integration)
+10. [Multi-Cloud Coordination](#multi-cloud-coordination)
+11. [Security and Compliance](#security-and-compliance)
+12. [Performance and Monitoring](#performance-and-monitoring)
+13. [Export and Import](#export-and-import)
+
+---
+
+## Configuration and Metadata
+
+### Environment Detection and Configuration
+
+```bash
+# Show system information and current configuration
+anysecret info
+anysecret status
+anysecret version
+
+# Show available providers and their status
+anysecret providers list
+anysecret providers status
+anysecret providers health
+
+# Configuration management
+anysecret config init                    # Interactive setup wizard
+anysecret config validate               # Validate current configuration
+anysecret config show                   # Display current configuration
+anysecret config reset                  # Reset to default configuration
+anysecret config backup                 # Backup current configuration
+anysecret config restore <backup-file>  # Restore from backup
+
+# Environment profiles
+anysecret config profile-create <name>    # Create configuration profile
+anysecret config profile-list            # List available profiles
+anysecret config profile-use <name>      # Switch to profile
+anysecret config profile-delete <name>   # Delete profile
+anysecret config profile-show <name>     # Show profile details
+
+# Provider configuration
+anysecret provider configure aws        # Configure AWS provider
+anysecret provider configure gcp        # Configure GCP provider
+anysecret provider configure azure      # Configure Azure provider
+anysecret provider test <provider>      # Test provider connectivity
+```
+
+### Classification Patterns
+
+```bash
+# Pattern management
+anysecret patterns show                        # Show all classification patterns
+anysecret config patterns-add-secret <pattern> # Add secret pattern
+anysecret config patterns-add-param <pattern>  # Add parameter pattern
+anysecret config patterns-remove <pattern>     # Remove pattern
+anysecret config patterns-test <key>           # Test key classification
+anysecret config patterns-export               # Export patterns to file
+anysecret config patterns-import <file>        # Import patterns from file
+```
+
+### Write Permissions and Security
+
+AnySecret is **read-only by default** to prevent accidental modifications to secrets and configuration. Write operations must be explicitly enabled per profile.
+
+```bash
+# Check write permissions across all profiles
+anysecret config check-permissions
+
+# Enable writes with security warning (current profile)
+anysecret config enable-writes
+
+# Enable writes for specific profile
+anysecret config enable-writes --profile production
+
+# Disable writes (secure default)
+anysecret config disable-writes
+
+# Skip confirmation prompt
+anysecret config enable-writes --yes
+```
+
+**Security Features:**
+- ✅ **Read-only by default**: All profiles start as read-only
+- ⚠️ **Explicit consent**: Write permissions require user confirmation
+- 🔒 **Security warnings**: Clear warnings when enabling writes
+- 📝 **Audit trail**: Tracks when/how permissions were changed
+- 🛡️ **Profile isolation**: Each profile has independent write permissions
+
+**Write operations include:**
+- `set`, `delete`, `update` commands
+- Bulk operations and migrations
+- Configuration modifications
+- Secret rotation and generation
+
+---
+
+## ReadOnly List and Bulk Operations
+
+### List Operations
+
+```bash
+# Basic listing
+anysecret list                          # List all keys with classification
+anysecret list --prefix <prefix>        # Filter by prefix
+anysecret list --secrets-only           # Show only secrets
+anysecret list --parameters-only        # Show only parameters
+anysecret list --values                  # Show parameter values (secrets hidden)
+anysecret list --format table|json|yaml # Output format (table is default)
+
+# Advanced filtering
+anysecret list --pattern <regex>        # Filter by regex pattern
+anysecret list --modified-since <date>  # Filter by modification date (not yet implemented)
+anysecret list --created-since <date>   # Filter by creation date (not yet implemented)
+anysecret list --tags <key=value>       # Filter by tags/metadata (not yet implemented)
+anysecret list --provider <provider>    # Filter by provider (not yet implemented)
+
+# Output format examples
+anysecret list --format json            # JSON output with metadata
+anysecret list --format yaml            # YAML output with metadata
+anysecret list --format json --values    # Include parameter values in JSON
+
+# Hierarchical view
+anysecret tree                          # Show hierarchical tree view
+anysecret tree --depth <n>              # Limit tree depth
+anysecret tree --prefix <prefix>        # Tree view with prefix filter
+
+# Search operations
+anysecret search <query>                # Search keys and descriptions
+anysecret search --content <query>      # Search in values (parameters only)
+anysecret search --metadata <query>     # Search in metadata
+anysecret grep <pattern>                # Regex search across keys/values
+```
+
+### Bulk Read Operations
+
+```bash
+# Bulk retrieval
+anysecret get-all --prefix <prefix>     # Get all with prefix
+anysecret get-batch <file>              # Get keys from file
+anysecret get-batch <key1,key2,key3>    # Get specific keys
+anysecret get-env --prefix <prefix>     # Output as environment variables
+anysecret get-json --prefix <prefix>    # Output as JSON object
+anysecret get-yaml --prefix <prefix>    # Output as YAML object
+
+# Comparison operations
+anysecret diff <env1> <env2>            # Compare environments
+anysecret diff --provider <p1> <p2>     # Compare providers
+anysecret validate-refs <file>          # Validate references in file
+```
+
+---
+
+## ReadOnly Item Operations
+
+### Single Item Retrieval
+
+```bash
+# Basic get operations
+anysecret get <key>                     # Get value with auto-classification
+anysecret get <key> --hint secret       # Override classification as secret
+anysecret get <key> --hint parameter    # Override classification as parameter
+anysecret get <key> --metadata          # Include metadata (classification, storage, type)
+anysecret get <key> --raw               # Raw output (reveals secret values)
+anysecret get <key> --format json        # JSON output format
+anysecret get <key> --format yaml        # YAML output format
+
+# Combined options
+anysecret get <key> --raw --format json # Get secret value in JSON
+anysecret get <key> --metadata --format yaml # Get with metadata in YAML
+
+# Explicit retrieval
+anysecret get-secret <key>              # Explicitly get from secrets
+anysecret get-parameter <key>           # Explicitly get from parameters
+anysecret get-secret <key> --version <v> # Get specific version
+anysecret get-secret <key> --decrypt    # Decrypt and show value
+
+# History and versions
+anysecret history <key>                 # Show version history
+anysecret versions <key>                # List all versions
+anysecret get-version <key> <version>   # Get specific version
+anysecret diff-versions <key> <v1> <v2> # Compare versions
+
+# Metadata operations
+anysecret describe <key>                # Show detailed metadata
+anysecret tags <key>                    # Show tags
+anysecret references <key>              # Show what references this key
+anysecret dependencies <key>            # Show key dependencies
+```
+
+### Validation and Testing
+
+```bash
+# Validation
+anysecret validate <key>                # Validate key exists and accessible
+anysecret test <key>                    # Test key retrieval
+anysecret check-access <key>            # Check access permissions
+anysecret lint                          # Lint all configuration
+
+# Classification testing
+anysecret classify <key>                # Test classification
+anysecret why-secret <key>              # Explain why classified as secret
+anysecret why-parameter <key>           # Explain why classified as parameter
+```
+
+---
+
+## Write Item Operations
+
+### Single Item Operations
+
+```bash
+# Basic set operations
+anysecret set <key> <value>             # Set with auto-classification
+anysecret set <key> <value> --hint secret    # Force as secret
+anysecret set <key> <value> --hint parameter # Force as parameter
+anysecret set <key> <value> --json      # Parse value as JSON
+anysecret set <key> <value> --base64    # Decode base64 value
+
+# Explicit operations
+anysecret set-secret <key> <value>      # Explicitly set as secret
+anysecret set-parameter <key> <value>   # Explicitly set as parameter
+anysecret set-secret <key> --file <path> # Set secret from file
+anysecret set-parameter <key> --file <path> # Set parameter from file
+
+# Advanced set options
+anysecret set <key> <value> --description <desc>  # Add description
+anysecret set <key> <value> --tags <k1=v1,k2=v2>  # Add tags
+anysecret set <key> <value> --ttl <seconds>        # Set TTL
+anysecret set <key> <value> --encrypt              # Force encryption
+anysecret set <key> <value> --if-not-exists        # Only if key doesn't exist
+
+# Update operations
+anysecret update <key> <value>          # Update existing key
+anysecret append <key> <value>          # Append to existing value
+anysecret replace <key> <old> <new>     # Replace substring in value
+anysecret rotate <key>                  # Generate new secret value
+
+# Deletion
+anysecret delete <key>                  # Delete key
+anysecret delete <key> --force          # Force delete without confirmation
+anysecret delete <key> --backup         # Backup before delete
+```
+
+### Interactive Operations
+
+```bash
+# Interactive editing
+anysecret edit <key>                    # Edit in default editor
+anysecret edit <key> --editor <cmd>     # Use specific editor
+anysecret create-interactive            # Interactive key creation wizard
+
+# Secure input
+anysecret set-secret <key> --prompt     # Prompt for secret value (hidden)
+anysecret generate <key>                # Generate random secret
+anysecret generate <key> --length <n>   # Generate with specific length
+anysecret generate <key> --pattern <p>  # Generate with pattern
+```
+
+---
+
+## Sync Migration
+
+### Provider Migration
+
+```bash
+# Full migration between providers
+anysecret migrate --from <source> --to <target>        # Migrate all
+anysecret migrate --from <source> --to <target> --dry-run # Test migration
+anysecret migrate --prefix <prefix> --from <s> --to <t> # Migrate prefix
+anysecret migrate --keys-from-file <file> --to <target> # Migrate specific keys
+
+# Sync operations
+anysecret sync <source> <target>        # Sync between providers
+anysecret sync <source> <target> --strategy <merge|overwrite|skip>
+anysecret sync --auto                   # Auto-sync based on configuration
+anysecret sync --watch                  # Continuous sync mode
+
+# Backup and restore
+anysecret backup --to <provider>        # Backup to provider
+anysecret backup --file <path>          # Backup to file
+anysecret restore --from <provider>     # Restore from provider
+anysecret restore --file <path>         # Restore from file
+anysecret snapshot <name>               # Create named snapshot
+anysecret rollback <snapshot>           # Rollback to snapshot
+```
+
+### Conflict Resolution
+
+```bash
+# Conflict management
+anysecret conflicts list                # List sync conflicts
+anysecret conflicts resolve <key> <strategy> # Resolve specific conflict
+anysecret conflicts resolve-all <strategy>   # Resolve all conflicts
+anysecret conflicts show <key>          # Show conflict details
+
+# Merge strategies
+anysecret merge <key> --strategy newest # Use newest value
+anysecret merge <key> --strategy manual # Manual merge
+anysecret merge <key> --interactive     # Interactive merge
+```
+
+---
+
+## Bulk Write Operations
+
+### Bulk Import/Export
+
+```bash
+# Import operations
+anysecret import <file>                 # Import from file
+anysecret import <file> --format json|yaml|env|csv
+anysecret import <file> --prefix <prefix>     # Add prefix to keys
+anysecret import <file> --dry-run             # Test import
+anysecret import <file> --overwrite           # Overwrite existing
+anysecret import <file> --skip-existing       # Skip existing keys
+anysecret import <file> --transform <script>  # Transform during import
+
+# Export operations
+anysecret export                        # Export all configuration
+anysecret export --format json|yaml|env|csv
+anysecret export --prefix <prefix>      # Export with prefix filter
+anysecret export --secrets-only         # Export only secrets
+anysecret export --parameters-only      # Export only parameters
+anysecret export --file <path>          # Export to file
+anysecret export --encrypt              # Encrypt exported data
+
+# Templating
+anysecret template render <template>    # Render configuration template
+anysecret template validate <template>  # Validate template
+anysecret template create <name>        # Create new template
+```
+
+### Batch Operations
+
+```bash
+# Batch modifications
+anysecret batch --file <operations.json>     # Execute batch operations
+anysecret batch --stdin                      # Read operations from stdin
+anysecret transform <script>                 # Apply transformation script
+anysecret update-tags --add <k=v>            # Add tags to multiple keys
+anysecret update-tags --remove <key>         # Remove tags from keys
+anysecret expire --pattern <regex> --ttl <t> # Set expiration on matching keys
+
+# Bulk generation
+anysecret generate-batch <count> --prefix <p> # Generate multiple secrets
+anysecret populate --template <file>          # Populate from template
+anysecret seed --environment <env>            # Seed with environment data
+```
+
+---
+
+## Environment Management
+
+### Environment Operations
+
+```bash
+# Environment management
+anysecret env create <name>             # Create new environment
+anysecret env list                      # List environments
+anysecret env switch <name>             # Switch to environment
+anysecret env delete <name>             # Delete environment
+anysecret env clone <source> <target>   # Clone environment
+anysecret env merge <source> <target>   # Merge environments
+
+# Environment configuration
+anysecret env config <name> --provider <p>    # Set provider for environment
+anysecret env config <name> --prefix <prefix> # Set prefix for environment
+anysecret env config <name> --tags <tags>     # Set environment tags
+anysecret env promote <from> <to>              # Promote between environments
+
+# Multi-environment operations
+anysecret deploy <env>                  # Deploy to environment
+anysecret rollback <env> <version>      # Rollback environment
+anysecret compare <env1> <env2>         # Compare environments
+anysecret validate-deployment <env>     # Validate deployment
+```
+
+---
+
+## CI/CD Integration
+
+### Pipeline Operations
+
+```bash
+# CI/CD helpers
+anysecret ci init                       # Initialize CI/CD configuration
+anysecret ci export --format <github|gitlab|jenkins> # Export for CI platform
+anysecret ci validate                   # Validate CI/CD configuration
+anysecret ci test-access               # Test CI/CD access permissions
+
+# Deployment operations
+anysecret deploy check                  # Pre-deployment checks
+anysecret deploy apply                  # Apply deployment
+anysecret deploy verify                 # Post-deployment verification
+anysecret deploy status                 # Check deployment status
+anysecret deploy logs                   # Show deployment logs
+
+# Integration commands
+anysecret webhook create <url>          # Create webhook for changes
+anysecret webhook test <id>             # Test webhook
+anysecret notify <message>              # Send notification
+anysecret audit-log                     # Show audit log
+```
+
+### Secret Injection
+
+```bash
+# Runtime injection
+anysecret exec -- <command>             # Execute command with secrets as env vars
+anysecret exec --prefix <p> -- <cmd>    # Execute with filtered secrets
+anysecret shell                         # Start shell with secrets loaded
+anysecret wrapper <config> -- <cmd>     # Use wrapper configuration
+
+# File injection
+anysecret inject <template> <output>    # Inject secrets into template
+anysecret substitute <file>             # Substitute references in file
+anysecret render-config <template>      # Render application config
+```
+
+---
+
+## Multi-Cloud Coordination
+
+### Cross-Cloud Operations
+
+```bash
+# Multi-provider management
+anysecret providers sync               # Sync across all providers
+anysecret providers balance           # Balance load across providers
+anysecret providers failover <from> <to> # Failover to different provider
+anysecret providers priority <list>   # Set provider priority order
+
+# Cross-cloud replication
+anysecret replicate --to <providers>   # Replicate to multiple providers
+anysecret replicate --key <key> --to <providers> # Replicate specific key
+anysecret replicate --strategy <active|passive>  # Set replication strategy
+
+# Regional operations
+anysecret regions list                 # List available regions
+anysecret regions sync <source> <target> # Sync between regions
+anysecret regions failover <region>    # Failover to region
+anysecret regions latency-test        # Test regional latency
+```
+
+### Cost Management
+
+```bash
+# Cost optimization
+anysecret cost estimate               # Estimate current costs
+anysecret cost optimize              # Suggest optimizations
+anysecret cost report --period <p>   # Generate cost report
+anysecret cost budget <amount>       # Set cost budget
+anysecret cost alert                 # Check cost alerts
+
+# Usage analytics
+anysecret usage stats                # Show usage statistics
+anysecret usage top                  # Show most accessed keys
+anysecret usage report               # Generate usage report
+anysecret usage trends               # Show usage trends
+```
+
+---
+
+## Security and Compliance
+
+### Security Operations
+
+```bash
+# Security scanning
+anysecret security scan              # Scan for security issues
+anysecret security audit             # Full security audit
+anysecret security compliance <standard> # Check compliance
+anysecret security rotate-all        # Rotate all secrets
+anysecret security check-access      # Check access permissions
+
+# Encryption management
+anysecret crypto keys list           # List encryption keys
+anysecret crypto keys rotate         # Rotate encryption keys
+anysecret crypto encrypt <file>      # Encrypt file
+anysecret crypto decrypt <file>      # Decrypt file
+anysecret crypto verify <file>       # Verify file integrity
+
+# Access control
+anysecret acl list                   # List access control rules
+anysecret acl grant <user> <permissions> # Grant permissions
+anysecret acl revoke <user> <permissions> # Revoke permissions
+anysecret acl audit                  # Audit access control
+```
+
+### Compliance and Auditing
+
+```bash
+# Audit operations
+anysecret audit trail               # Show audit trail
+anysecret audit export --format <f> # Export audit logs
+anysecret audit search <query>      # Search audit logs
+anysecret audit compliance <std>    # Check compliance standard
+
+# Reporting
+anysecret report security           # Security report
+anysecret report compliance <std>   # Compliance report
+anysecret report usage              # Usage report
+anysecret report export <format>    # Export reports
+```
+
+---
+
+## Performance and Monitoring
+
+### Performance Operations
+
+```bash
+# Performance monitoring
+anysecret perf benchmark            # Run performance benchmark
+anysecret perf monitor              # Monitor real-time performance
+anysecret perf profile              # Profile operations
+anysecret perf cache stats          # Show cache statistics
+anysecret perf cache clear          # Clear cache
+
+# Health monitoring
+anysecret health check              # Overall health check
+anysecret health providers          # Check provider health
+anysecret health connectivity       # Check connectivity
+anysecret health alerts             # Show health alerts
+anysecret health dashboard          # Show health dashboard
+```
+
+### Debugging and Troubleshooting
+
+```bash
+# Debug operations
+anysecret debug info                # Show debug information
+anysecret debug trace <operation>   # Trace operation execution
+anysecret debug logs                # Show debug logs
+anysecret debug connectivity        # Debug connectivity issues
+anysecret debug permissions         # Debug permission issues
+
+# Troubleshooting
+anysecret doctor                    # Run diagnostic checks
+anysecret fix <issue>               # Auto-fix common issues
+anysecret test-config               # Test configuration
+anysecret validate-setup            # Validate entire setup
+```
+
+---
+
+## Export and Import
+
+### Data Exchange
+
+```bash
+# Advanced export
+anysecret export --vault            # Export in Vault format
+anysecret export --terraform        # Export as Terraform variables
+anysecret export --kubernetes       # Export as Kubernetes manifests
+anysecret export --docker           # Export as Docker secrets
+anysecret export --ansible          # Export for Ansible
+anysecret export --helm              # Export as Helm values
+
+# Advanced import  
+anysecret import --from-vault <addr>      # Import from Vault
+anysecret import --from-terraform <file>  # Import from Terraform
+anysecret import --from-kubernetes <ns>   # Import from Kubernetes
+anysecret import --from-env              # Import from environment
+anysecret import --from-keyring          # Import from system keyring
+
+# Format conversion
+anysecret convert <input> <output> --from <fmt> --to <fmt>
+anysecret convert --list-formats     # List supported formats
+anysecret validate-format <file>     # Validate file format
+```
+
+### Integration Helpers
+
+```bash
+# Tool integrations
+anysecret generate-compose           # Generate docker-compose with secrets
+anysecret generate-systemd           # Generate systemd service with secrets
+anysecret generate-k8s-manifest      # Generate Kubernetes manifest
+anysecret generate-terraform         # Generate Terraform configuration
+anysecret generate-ansible-vars      # Generate Ansible variables
+
+# API operations
+anysecret api server start           # Start REST API server
+anysecret api client test            # Test API client
+anysecret api docs                   # Show API documentation
+anysecret webhook listen             # Listen for webhooks
+```
+
+---
+
+## Global Options
+
+All commands support these global options:
+
+```bash
+--config <file>                     # Use specific configuration file
+--profile <name>                    # Use specific profile
+--provider <name>                   # Override provider
+--region <name>                     # Override region
+--format <json|yaml|table|raw>      # Output format
+--output <file>                     # Output to file
+--quiet                            # Suppress output
+--verbose                          # Verbose output
+--debug                            # Debug mode
+--dry-run                          # Show what would be done
+--force                            # Force operation
+--yes                              # Auto-confirm prompts
+--timeout <seconds>                # Operation timeout
+--retry <count>                    # Retry count for failures
+--cache/--no-cache                 # Enable/disable caching
+--parallel <count>                 # Parallel operation count
+```
+
+---
+
+## Environment Variables
+
+Key environment variables that control CLI behavior:
+
+```bash
+ANYSECRET_CONFIG_FILE              # Configuration file path
+ANYSECRET_PROFILE                  # Active profile
+ANYSECRET_PROVIDER                 # Default provider
+ANYSECRET_REGION                   # Default region
+ANYSECRET_READ_ONLY                # Enable read-only mode
+ANYSECRET_CACHE_TTL                # Cache TTL in seconds
+ANYSECRET_LOG_LEVEL                # Log level (debug, info, warn, error)
+ANYSECRET_OUTPUT_FORMAT            # Default output format
+ANYSECRET_TIMEOUT                  # Default timeout
+ANYSECRET_PARALLEL                 # Default parallelism
+ANYSECRET_NO_COLOR                 # Disable colored output
+ANYSECRET_API_URL                  # API server URL
+ANYSECRET_WEBHOOK_URL              # Webhook URL
+```
+
+---
+
+## Exit Codes
+
+The CLI uses standard exit codes:
+
+- `0` - Success
+- `1` - General error
+- `2` - Configuration error
+- `3` - Permission/access error
+- `4` - Network/connectivity error
+- `5` - Not found error
+- `6` - Validation error
+- `7` - Conflict error
+- `8` - Authentication error
+- `9` - Resource limit error
+- `10` - Timeout error
+
+---
+
+## Command Features and Implementation Details
+
+### List Command (`anysecret list`)
+
+**Description:** Lists all configuration keys with intelligent classification and filtering.
+
+**Features:**
+- **Automatic Classification**: Shows whether each key is a secret (🔐) or parameter (⚙️)
+- **Rich UI**: Color-coded output with table formatting
+- **Multiple Output Formats**: Table (default), JSON, YAML
+- **Advanced Filtering**: By prefix, pattern (regex), type (secrets/parameters)
+- **Value Display**: Optional display of parameter values (secrets always hidden)
+
+**Options:**
+- `--prefix <prefix>`: Filter results by key prefix
+- `--pattern <regex>`: Filter using regular expressions
+- `--secrets-only`: Show only secrets
+- `--parameters-only`: Show only parameters
+- `--values`: Display parameter values (secrets remain hidden)
+- `--format table|json|yaml`: Output format (default: table)
+
+**Examples:**
+```bash
+anysecret list                          # List all with table format
+anysecret list --format json            # JSON output
+anysecret list --pattern ".*_KEY"       # Regex filtering
+anysecret list --secrets-only --values  # Secrets only (values hidden)
+anysecret list --format yaml --prefix API  # YAML with prefix filter
+```
+
+### Get Command (`anysecret get`)
+
+**Description:** Retrieves a single configuration value with intelligent routing.
+
+**Features:**
+- **Intelligent Classification**: Automatically determines if key is secret or parameter
+- **Pattern-Based Routing**: Uses built-in and custom patterns for classification
+- **Secure by Default**: Secrets are hidden unless explicitly revealed with --raw
+- **Rich Metadata**: Shows classification method, storage backend, value type
+- **Multiple Output Formats**: Rich panels (default), JSON, YAML, raw text
+
+**Options:**
+- `--hint secret|parameter`: Override automatic classification
+- `--metadata`: Include detailed metadata in output
+- `--raw`: Reveal actual secret values (use with caution)
+- `--format json|yaml`: Structured output format
+
+**Security Notes:**
+- Secrets are always hidden in default output
+- Use `--raw` only in secure environments
+- JSON/YAML formats respect --raw flag for secret values
+
+**Examples:**
+```bash
+anysecret get API_KEY                   # Auto-classified, secret hidden
+anysecret get API_KEY --raw             # Reveals actual secret value
+anysecret get config --hint parameter   # Force parameter classification
+anysecret get API_KEY --format json --metadata  # JSON with metadata
+anysecret get DB_PASSWORD --raw --format yaml   # Secret value in YAML
+```
+
+### Pattern Management Commands
+
+**Description:** Manage custom classification patterns for intelligent routing.
+
+**Commands:**
+- `anysecret config patterns show`: Display all patterns (built-in and custom)
+- `anysecret config patterns-add-secret <pattern>`: Add secret classification pattern
+- `anysecret config patterns-add-param <pattern>`: Add parameter classification pattern
+
+**Pattern Examples:**
+```bash
+# Add patterns for secrets
+anysecret config patterns-add-secret '.*_credentials$'
+anysecret config patterns-add-secret '.*_private_key$'
+
+# Add patterns for parameters
+anysecret config patterns-add-param '.*_config$'
+anysecret config patterns-add-param '^app_.*'
+```
+
+---
+
+## Provider Implementation Status
+
+The following table shows the implementation status of each command across different providers:
+
+**Legend:**
+- ✅ - Implemented and tested
+- ⏳ - Planned/Upcoming implementation
+- ❌ - Not supported by provider
+- 🔄 - Partially implemented
+
+| Command | AWS | GCP | Azure | Kubernetes | Vault | GitHub Actions | Env File | Encrypted File | File JSON | File YAML |
+|---------|-----|-----|-------|------------|-------|----------------|----------|----------------|-----------|-----------|
+| **Configuration & Metadata** |
+| `anysecret info` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret status` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret providers list` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret providers health` | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config init` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config validate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config profile-create` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config profile-list` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config profile-use` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret patterns show` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config patterns-add-secret` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config patterns-add-param` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Read Operations** |
+| `anysecret list` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret tree` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret search` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret get` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret get-secret` | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `anysecret get-parameter` | ✅ | ✅ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `anysecret get-prefix` | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret get-batch` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret get-env` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret history` | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret versions` | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret describe` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret classify` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Write Operations** |
+| `anysecret set` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret set-secret` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ❌ | ❌ |
+| `anysecret set-parameter` | ⏳ | ✅ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ⏳ | ⏳ |
+| `anysecret update` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret delete` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret edit` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret generate` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret rotate` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Migration & Sync** |
+| `anysecret migrate` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret sync` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret backup` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret restore` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret snapshot` | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret conflicts` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| **Bulk Operations** |
+| `anysecret import` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret export` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret template` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret batch` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret transform` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| **Environment Management** |
+| `anysecret env create` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret env switch` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret env promote` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret deploy` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ |
+| **CI/CD Integration** |
+| `anysecret ci init` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret ci export` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret exec` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret shell` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret inject` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret webhook` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ |
+| **Multi-Cloud** |
+| `anysecret providers sync` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret providers balance` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret replicate` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret regions sync` | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret cost estimate` | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret usage stats` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Security & Compliance** |
+| `anysecret security scan` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret security audit` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret security rotate-all` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret crypto keys` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ⏳ | ❌ | ❌ |
+| `anysecret acl` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret audit trail` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Performance & Monitoring** |
+| `anysecret perf benchmark` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret health check` | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret debug` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret doctor` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| **Export & Import** |
+| `anysecret export --vault` | ⏳ | ⏳ | ⏳ | ⏳ | ✅ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret export --terraform` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret export --kubernetes` | ⏳ | ⏳ | ⏳ | ✅ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret import --from-vault` | ⏳ | ⏳ | ⏳ | ⏳ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret generate-compose` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret api server` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+
+### Provider-Specific Notes:
+
+**AWS**: Full secret manager and parameter store support planned. Version history available for secrets.
+
+**GCP**: Secret Manager integration planned. Config Connector available for parameter management.
+
+**Azure**: Key Vault and App Configuration support planned. Full versioning support.
+
+**Kubernetes**: ConfigMaps for parameters, Secrets for sensitive data. No version history support.
+
+**Vault**: HashiCorp Vault integration for secrets only. Strong versioning and encryption features. No parameter store capability.
+
+**GitHub Actions**: Read-only access to organization secrets. Limited write capabilities.
+
+**Env File**: Simple file-based storage. No versioning or encryption.
+
+**Encrypted File**: File-based with encryption. Limited versioning through backups.
+
+**File JSON/YAML**: Structured file storage for parameters. Version control through git.
+
+---
+
+This comprehensive CLI specification provides a complete interface for secret and configuration management that supports enterprise requirements, CI/CD integration, multi-cloud coordination, and operational excellence.
