@@ -106,7 +106,7 @@ class GcpSecretManager(BaseSecretManager):
                 value=secret_value,
                 key=key,
                 version=response.name.split("/")[-1],
-                created_at=response.create_time.isoformat() if response.create_time else None,
+                created_at=secret_metadata.get('created_at'),  # Get from metadata instead
                 metadata={
                     'source': 'gcp_secret_manager',
                     'project_id': self.project_id,
@@ -193,17 +193,25 @@ class GcpSecretManager(BaseSecretManager):
     async def health_check(self) -> bool:
         """Check if GCP Secret Manager is accessible"""
         try:
+            logger.info(f"Starting GCP health check for project {self.project_id}")
+            
+            # Quick check - just verify client exists and project is set
+            if not self._client or not self.project_id:
+                logger.error(f"Missing client or project_id: client={self._client}, project={self.project_id}")
+                return False
+            
+            # Try a lightweight operation
             loop = asyncio.get_event_loop()
             parent = f"projects/{self.project_id}"
-
-            # Try to list secrets with limit to minimize response
+            
+            # Try to list with minimal response and timeout
             request = {"parent": parent, "page_size": 1}
-            await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None,
-                self._client.list_secrets,
-                request
+                lambda: list(self._client.list_secrets(request=request, timeout=10.0))
             )
-
+            
+            logger.info(f"GCP health check passed for project {self.project_id}")
             return True
 
         except Exception as e:
@@ -227,12 +235,15 @@ class GcpSecretManager(BaseSecretManager):
             loop = asyncio.get_event_loop()
             parent = f"projects/{self.project_id}"
 
-            # Create the secret
+            # Create the secret with replication policy
             secret_request = {
                 "parent": parent,
                 "secret_id": key,
                 "secret": {
                     "labels": labels or {},
+                    "replication": {
+                        "automatic": {}  # Use automatic replication
+                    }
                 }
             }
 

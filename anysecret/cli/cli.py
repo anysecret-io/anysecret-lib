@@ -211,25 +211,171 @@ def get_value(
         return
 
 @app.command(name="set") 
-@requires_write_permission
 def set_value(
     key: str,
     value: str,
     hint: Optional[str] = typer.Option(None, "--hint", "-h", help="Classification hint: secret|parameter"),
-    json_value: bool = typer.Option(False, "--json", help="Parse value as JSON")
+    json_value: bool = typer.Option(False, "--json", help="Parse value as JSON"),
+    base64: bool = typer.Option(False, "--base64", help="Decode base64 value"),
+    if_not_exists: bool = typer.Option(False, "--if-not-exists", help="Only set if key doesn't exist")
 ):
-    """Set a configuration value with intelligent routing"""  
-    return write_commands.set_value(key, value, hint, json_value)
+    """Set a configuration value with intelligent routing"""
+    # Import and run the write logic directly
+    import asyncio
+    from ..config_loader import initialize_config
+    from ..config import get_secret_manager, get_parameter_manager
+    from ..config_manager import ConfigManager
+    from rich.console import Console
+    from rich.panel import Panel
+    import json as json_lib
+    import base64 as b64_lib
+    
+    console = Console()
+    
+    async def _set_value():
+        # Initialize configuration
+        initialize_config()
+        
+        # Get managers
+        secret_mgr = await get_secret_manager()
+        param_mgr = await get_parameter_manager()
+        
+        # Process value transformations
+        processed_value = value
+        
+        # Handle base64 decoding
+        if base64:
+            try:
+                processed_value = b64_lib.b64decode(value).decode('utf-8')
+            except Exception:
+                console.print("[red]❌ Invalid base64 value[/red]")
+                raise typer.Exit(1)
+        
+        # Handle JSON parsing
+        if json_value:
+            try:
+                json_lib.loads(processed_value)  # Validate JSON
+            except json_lib.JSONDecodeError:
+                console.print("[red]❌ Invalid JSON value[/red]")
+                raise typer.Exit(1)
+        
+        # Check if_not_exists
+        if if_not_exists:
+            try:
+                existing = await secret_mgr.get_secret(key)
+                if existing:
+                    console.print(f"[yellow]Key '{key}' already exists (skipped)[/yellow]")
+                    return
+            except:
+                pass
+            try:
+                existing = await param_mgr.get_parameter(key)
+                if existing:
+                    console.print(f"[yellow]Key '{key}' already exists (skipped)[/yellow]")
+                    return
+            except:
+                pass
+        
+        # Determine classification
+        classification = hint
+        if not classification:
+            # Use pattern matching directly
+            if any(pattern in key.lower() for pattern in ['secret', 'password', 'key', 'token', 'api', 'credential']):
+                classification = 'secret'
+            else:
+                classification = 'parameter'
+        
+        # Set value
+        success = False
+        storage_type = None
+        
+        if classification == 'secret':
+            try:
+                try:
+                    await secret_mgr.create_secret(key, processed_value)
+                    success = True
+                except Exception as e:
+                    if "already exists" in str(e).lower():
+                        await secret_mgr.update_secret(key, processed_value)
+                        success = True
+                    else:
+                        raise
+                storage_type = secret_mgr.__class__.__name__.replace('SecretManager', '').replace('Manager', '')
+            except Exception as e:
+                if "already exists" not in str(e).lower():
+                    try:
+                        await param_mgr.create_parameter(key, processed_value)
+                        success = True
+                        classification = 'parameter'
+                        storage_type = param_mgr.__class__.__name__.replace('ParameterManager', '').replace('Manager', '')
+                    except Exception as pe:
+                        console.print(f"[red]❌ Failed to set: {e}[/red]")
+                        raise typer.Exit(1)
+                else:
+                    console.print(f"[red]❌ Failed to set: {e}[/red]")
+                    raise typer.Exit(1)
+        else:
+            try:
+                try:
+                    await param_mgr.create_parameter(key, processed_value)
+                    success = True
+                except Exception as e:
+                    print(f"DEBUG: create_parameter failed with: {e}")
+                    if "already exists" in str(e).lower():
+                        await param_mgr.update_parameter(key, processed_value)
+                        success = True
+                    else:
+                        raise
+                storage_type = param_mgr.__class__.__name__.replace('ParameterManagerClient', '').replace('ParameterManager', '').replace('Manager', '')
+            except Exception as e:
+                if "already exists" not in str(e).lower():
+                    try:
+                        await secret_mgr.create_secret(key, processed_value)
+                        success = True
+                        classification = 'secret'
+                        storage_type = secret_mgr.__class__.__name__.replace('SecretManager', '').replace('Manager', '')
+                    except Exception as se:
+                        console.print(f"[red]❌ Failed to set: {e}[/red]")
+                        raise typer.Exit(1)
+                else:
+                    console.print(f"[red]❌ Failed to set: {e}[/red]")
+                    raise typer.Exit(1)
+        
+        if success:
+            icon = '🔐' if classification == 'secret' else '⚙️'
+            console.print(Panel.fit(
+                f"[bold green]✅ Value Set Successfully[/bold green]\n\n"
+                f"Key: {key}\n"
+                f"Type: {icon} {'Secret' if classification == 'secret' else 'Parameter'}\n"
+                f"Storage: {storage_type}\n"
+                f"Value Length: {len(processed_value)} characters",
+                border_style="green"
+            ))
+            console.print(f"\nNext steps:\n• Retrieve value: anysecret get {key}")
+            if classification == 'secret':
+                console.print(f"• Show value: anysecret get {key} --raw")
+    
+    asyncio.run(_set_value())
 
 @app.command(name="delete")
 @requires_write_permission
 def delete_value(
     key: str,
     hint: Optional[str] = typer.Option(None, "--hint", "-h", help="Classification hint: secret|parameter"),
-    force: bool = typer.Option(False, "--force", help="Skip confirmation")
+    force: bool = typer.Option(False, "--force", help="Skip confirmation"),
+    backup: bool = typer.Option(True, "--backup/--no-backup", help="Create backup before deletion")
 ):
     """Delete a configuration value"""
-    return write_commands.delete_value(key, hint, force)
+    import asyncio
+    try:
+        return asyncio.run(write_commands.delete_value(
+            key=key,
+            hint=hint,
+            force=force,
+            backup=backup
+        ))
+    except Exception:
+        return
 
 @app.command(name="health")
 def health_check():

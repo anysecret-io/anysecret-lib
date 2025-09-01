@@ -287,29 +287,362 @@ async def list_configs_async(
 
 @app.command(name="tree")
 @handle_errors
-def tree_view(
+@async_command
+async def tree_view(
     prefix: Optional[str] = typer.Option(None, "--prefix", "-p", help="Root prefix"),
-    depth: Optional[int] = typer.Option(None, "--depth", "-d", help="Maximum depth")
+    depth: Optional[int] = typer.Option(None, "--depth", "-d", help="Maximum depth"),
+    secrets_only: bool = typer.Option(False, "--secrets-only", help="Show only secrets"),
+    parameters_only: bool = typer.Option(False, "--parameters-only", help="Show only parameters")
 ):
     """Show hierarchical tree view of configuration"""
-    print_not_implemented(
-        "anysecret read tree",
-        f"Will show tree view - prefix: {prefix}, depth: {depth}"
-    )
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.tree import Tree
+    from collections import defaultdict
+    
+    console = Console()
+    
+    try:
+        # Import configuration managers
+        from ...config_loader import initialize_config
+        from ...config import get_secret_manager, get_parameter_manager
+        
+        # Initialize configuration
+        initialize_config()
+        
+        # Get managers
+        secret_mgr = await get_secret_manager()
+        param_mgr = await get_parameter_manager()
+        
+        # Collect all keys
+        all_keys = []
+        
+        # Get secrets if not parameters_only
+        if not parameters_only:
+            try:
+                secrets = await secret_mgr.list_secrets()
+                for key in secrets:
+                    all_keys.append((key, 'secret', '🔐'))
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Could not list secrets: {e}[/yellow]")
+        
+        # Get parameters if not secrets_only
+        if not secrets_only:
+            try:
+                parameters = await param_mgr.list_parameters()
+                for key in parameters:
+                    all_keys.append((key, 'parameter', '⚙️'))
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Could not list parameters: {e}[/yellow]")
+        
+        # Filter by prefix
+        if prefix:
+            all_keys = [(k, t, i) for k, t, i in all_keys if k.startswith(prefix)]
+        
+        if not all_keys:
+            console.print(f"[yellow]No configuration found{' with prefix ' + prefix if prefix else ''}[/yellow]")
+            return
+        
+        # Build tree structure
+        tree_data = defaultdict(lambda: defaultdict(list))
+        
+        for key, key_type, icon in all_keys:
+            # Remove prefix if specified
+            display_key = key[len(prefix):] if prefix else key
+            
+            # Split by separator (/ or _)
+            if '/' in display_key:
+                parts = display_key.split('/')
+            elif '_' in display_key:
+                parts = display_key.split('_')
+            else:
+                parts = [display_key]
+            
+            # Apply depth limit
+            if depth and len(parts) > depth:
+                parts = parts[:depth]
+                parts[-1] = parts[-1] + "..."
+            
+            # Build nested structure
+            current = tree_data
+            for i, part in enumerate(parts[:-1]):
+                if part not in current:
+                    current[part] = defaultdict(list)
+                current = current[part]
+            
+            # Add final item
+            final_part = parts[-1] if parts else key
+            current['__items__'].append((final_part, key_type, icon, key))
+        
+        # Display tree
+        root_title = f"Configuration Tree"
+        if prefix:
+            root_title += f" (prefix: {prefix})"
+        if depth:
+            root_title += f" (depth: {depth})"
+        
+        console.print(Panel.fit(f"[bold green]🌳 {root_title}[/bold green]", border_style="green"))
+        
+        # Create Rich tree
+        tree = Tree("📁 Configuration")
+        
+        def build_tree_node(node_data, parent_tree, current_depth=0):
+            # Add items at this level
+            if '__items__' in node_data:
+                for item_name, item_type, icon, full_key in sorted(node_data['__items__']):
+                    label = f"{icon} [cyan]{item_name}[/cyan] [dim]({item_type})[/dim]"
+                    parent_tree.add(label)
+            
+            # Add subdirectories
+            for key, subdata in sorted(node_data.items()):
+                if key != '__items__':
+                    subtree = parent_tree.add(f"📁 [yellow]{key}/[/yellow]")
+                    build_tree_node(subdata, subtree, current_depth + 1)
+        
+        build_tree_node(tree_data, tree)
+        console.print(tree)
+        
+        # Summary
+        total_items = len(all_keys)
+        secrets_count = len([k for k, t, i in all_keys if t == 'secret'])
+        params_count = len([k for k, t, i in all_keys if t == 'parameter'])
+        
+        console.print(f"\n[bold]Summary:[/bold] {total_items} items ({secrets_count} secrets, {params_count} parameters)")
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error building tree view: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command(name="search")
 @handle_errors
-def search_configs(
+@async_command
+async def search_configs(
     query: str,
     content: bool = typer.Option(False, "--content", help="Search in values"),
-    metadata: bool = typer.Option(False, "--metadata", help="Search in metadata")
+    metadata: bool = typer.Option(False, "--metadata", help="Search in metadata"),
+    secrets_only: bool = typer.Option(False, "--secrets-only", help="Search only secrets"),
+    parameters_only: bool = typer.Option(False, "--parameters-only", help="Search only parameters"),
+    case_sensitive: bool = typer.Option(False, "--case-sensitive", help="Case sensitive search"),
+    regex: bool = typer.Option(False, "--regex", help="Use regex pattern matching"),
+    format_output: Optional[str] = typer.Option(None, "--format", help="Output format: table|json|yaml")
 ):
     """Search configuration keys and values"""
-    print_not_implemented(
-        "anysecret read search",
-        f"Will search for '{query}' in {'content and metadata' if content and metadata else 'content' if content else 'metadata' if metadata else 'keys'}"
-    )
+    import re
+    import json
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    
+    console = Console()
+    
+    # Validate format option
+    if format_output and format_output.lower() not in ['table', 'json', 'yaml']:
+        console.print(f"[red]❌ Invalid format: {format_output}[/red]")
+        console.print("[dim]Valid formats: table, json, yaml[/dim]")
+        raise typer.Exit(1)
+    
+    try:
+        # Import configuration managers
+        from ...config_loader import initialize_config
+        from ...config import get_secret_manager, get_parameter_manager
+        
+        # Initialize configuration
+        initialize_config()
+        
+        # Get managers
+        secret_mgr = await get_secret_manager()
+        param_mgr = await get_parameter_manager()
+        
+        # Prepare search pattern
+        if regex:
+            try:
+                pattern = re.compile(query if case_sensitive else query, re.IGNORECASE if not case_sensitive else 0)
+            except re.error as e:
+                console.print(f"[red]❌ Invalid regex pattern: {e}[/red]")
+                raise typer.Exit(1)
+        else:
+            pattern = None
+        
+        def matches_query(text):
+            if not text:
+                return False
+            if regex:
+                return bool(pattern.search(text))
+            else:
+                return query.lower() in text.lower() if not case_sensitive else query in text
+        
+        # Search results
+        results = []
+        
+        # Search secrets if not parameters_only
+        if not parameters_only:
+            try:
+                secrets = await secret_mgr.list_secrets()
+                for key in secrets:
+                    match_info = {}
+                    
+                    # Search in key name
+                    if matches_query(key):
+                        match_info['key'] = True
+                    
+                    # Search in content if requested
+                    if content:
+                        try:
+                            value = await secret_mgr.get_secret(key)
+                            if isinstance(value, str) and matches_query(value):
+                                match_info['content'] = True
+                        except:
+                            pass  # Skip if can't retrieve value
+                    
+                    # Search in metadata if requested (and supported)
+                    if metadata:
+                        try:
+                            # Try to get metadata (not all providers support this)
+                            meta = getattr(secret_mgr, 'get_metadata', None)
+                            if meta:
+                                meta_data = await meta(key)
+                                if meta_data and matches_query(str(meta_data)):
+                                    match_info['metadata'] = True
+                        except:
+                            pass  # Skip if metadata not supported
+                    
+                    # If any matches found, add to results
+                    if match_info:
+                        results.append({
+                            'key': key,
+                            'type': 'Secret',
+                            'icon': '🔐',
+                            'matches': match_info,
+                            'storage': secret_mgr.__class__.__name__.replace('Manager', '').replace('Secret', '')
+                        })
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Could not search secrets: {e}[/yellow]")
+        
+        # Search parameters if not secrets_only
+        if not secrets_only:
+            try:
+                parameters = await param_mgr.list_parameters()
+                for key in parameters:
+                    match_info = {}
+                    
+                    # Search in key name
+                    if matches_query(key):
+                        match_info['key'] = True
+                    
+                    # Search in content if requested
+                    if content:
+                        try:
+                            value = await param_mgr.get_parameter(key)
+                            if isinstance(value, str) and matches_query(value):
+                                match_info['content'] = True
+                        except:
+                            pass  # Skip if can't retrieve value
+                    
+                    # Search in metadata if requested (and supported)
+                    if metadata:
+                        try:
+                            # Try to get metadata (not all providers support this)
+                            meta = getattr(param_mgr, 'get_metadata', None)
+                            if meta:
+                                meta_data = await meta(key)
+                                if meta_data and matches_query(str(meta_data)):
+                                    match_info['metadata'] = True
+                        except:
+                            pass  # Skip if metadata not supported
+                    
+                    # If any matches found, add to results
+                    if match_info:
+                        results.append({
+                            'key': key,
+                            'type': 'Parameter',
+                            'icon': '⚙️',
+                            'matches': match_info,
+                            'storage': param_mgr.__class__.__name__.replace('Manager', '').replace('Parameter', '')
+                        })
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Could not search parameters: {e}[/yellow]")
+        
+        # Display results
+        search_scope = []
+        if content:
+            search_scope.append("content")
+        if metadata:
+            search_scope.append("metadata")
+        if not content and not metadata:
+            search_scope.append("keys")
+        
+        header_text = f"[bold green]🔍 Search Results[/bold green]\n"
+        header_text += f"Query: [cyan]{query}[/cyan] | Scope: {', '.join(search_scope)}"
+        if regex:
+            header_text += " | [yellow]regex[/yellow]"
+        if not case_sensitive:
+            header_text += " | [dim]case-insensitive[/dim]"
+        
+        console.print(Panel.fit(header_text, border_style="green"))
+        
+        if not results:
+            console.print("[yellow]No matches found[/yellow]")
+            return
+        
+        # Format output
+        if format_output and format_output.lower() == 'json':
+            output_data = []
+            for result in results:
+                match_types = list(result['matches'].keys())
+                output_data.append({
+                    'key': result['key'],
+                    'type': result['type'].lower(),
+                    'storage': result['storage'],
+                    'matches_in': match_types
+                })
+            console.print(json.dumps(output_data, indent=2))
+        elif format_output and format_output.lower() == 'yaml':
+            import yaml
+            output_data = []
+            for result in results:
+                match_types = list(result['matches'].keys())
+                output_data.append({
+                    'key': result['key'],
+                    'type': result['type'].lower(),
+                    'storage': result['storage'],
+                    'matches_in': match_types
+                })
+            console.print(yaml.dump(output_data, default_flow_style=False))
+        else:
+            # Table format
+            table = Table()
+            table.add_column("Key", style="cyan", width=30)
+            table.add_column("Type", style="green", width=10)
+            table.add_column("Matches In", style="yellow", width=15)
+            table.add_column("Storage", style="dim", width=12)
+            
+            for result in sorted(results, key=lambda x: (x['type'], x['key'])):
+                match_types = []
+                if result['matches'].get('key'):
+                    match_types.append("key")
+                if result['matches'].get('content'):
+                    match_types.append("content")
+                if result['matches'].get('metadata'):
+                    match_types.append("metadata")
+                
+                table.add_row(
+                    f"{result['icon']} {result['key']}",
+                    result['type'],
+                    ", ".join(match_types),
+                    result['storage']
+                )
+            
+            console.print(table)
+        
+        # Summary
+        secrets_count = len([r for r in results if r['type'] == 'Secret'])
+        params_count = len([r for r in results if r['type'] == 'Parameter'])
+        console.print(f"\n[bold]Summary:[/bold] {len(results)} matches ({secrets_count} secrets, {params_count} parameters)")
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error during search: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command(name="grep")
@@ -586,27 +919,391 @@ def get_prefix(
 
 @app.command(name="get-batch")
 @handle_errors
-def get_batch(
-    keys: str,
-    file: Optional[str] = typer.Option(None, "--file", help="Keys from file")
+@async_command
+async def get_batch(
+    keys: Optional[str] = typer.Argument(None, help="Comma-separated list of keys"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Keys from file (one per line)"),
+    format_output: Optional[str] = typer.Option(None, "--format", help="Output format: table|json|yaml|env"),
+    fail_fast: bool = typer.Option(False, "--fail-fast", help="Stop on first error"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Only show values, no formatting"),
+    prefix: Optional[str] = typer.Option(None, "--prefix", help="Add prefix to keys")
 ):
     """Get multiple keys in batch"""
-    print_not_implemented(
-        "anysecret read get-batch",
-        f"Will get batch keys: {keys if not file else f'from file {file}'}"
-    )
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from pathlib import Path
+    import json
+    
+    console = Console()
+    
+    if not keys and not file:
+        console.print("[red]❌ Must provide either keys or --file option[/red]")
+        console.print("[dim]Examples:[/dim]")
+        console.print("[dim]  anysecret get-batch API_KEY,DB_HOST,SECRET_TOKEN[/dim]")
+        console.print("[dim]  anysecret get-batch --file keys.txt[/dim]")
+        raise typer.Exit(1)
+    
+    # Validate format option
+    if format_output and format_output.lower() not in ['table', 'json', 'yaml', 'env']:
+        console.print(f"[red]❌ Invalid format: {format_output}[/red]")
+        console.print("[dim]Valid formats: table, json, yaml, env[/dim]")
+        raise typer.Exit(1)
+    
+    try:
+        # Import configuration managers
+        from ...config_loader import initialize_config
+        from ...config import get_secret_manager, get_parameter_manager
+        
+        # Initialize configuration
+        initialize_config()
+        
+        # Get managers
+        secret_mgr = await get_secret_manager()
+        param_mgr = await get_parameter_manager()
+        
+        # Parse keys list
+        key_list = []
+        if file:
+            try:
+                file_path = Path(file)
+                if not file_path.exists():
+                    console.print(f"[red]❌ File not found: {file}[/red]")
+                    raise typer.Exit(1)
+                
+                with open(file_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):  # Skip comments and empty lines
+                            key_list.append(line)
+            except Exception as e:
+                console.print(f"[red]❌ Error reading file: {e}[/red]")
+                raise typer.Exit(1)
+        else:
+            key_list = [k.strip() for k in keys.split(',') if k.strip()]
+        
+        if not key_list:
+            console.print("[yellow]⚠️  No keys to retrieve[/yellow]")
+            return
+        
+        if not quiet:
+            header_text = f"[bold green]📦 Batch Retrieval[/bold green]\n"
+            header_text += f"Keys: {len(key_list)}"
+            if file:
+                header_text += f" | Source: {file}"
+            console.print(Panel.fit(header_text, border_style="green"))
+        
+        # Retrieve all keys
+        results = []
+        errors = []
+        
+        for key in key_list:
+            actual_key = f"{prefix}{key}" if prefix else key
+            
+            try:
+                value = None
+                is_secret = False
+                storage_type = None
+                
+                # Try to classify key first
+                from ...config_manager import ConfigManager
+                
+                # Create temporary config for classification
+                temp_config = ConfigManager({}, {})
+                classification = temp_config.classify_key(actual_key)
+                
+                if classification == 'secret':
+                    try:
+                        value = await secret_mgr.get_secret(actual_key)
+                        is_secret = True
+                        storage_type = secret_mgr.__class__.__name__.replace('Manager', '').replace('Secret', '')
+                    except Exception:
+                        # Fallback to parameter if secret retrieval fails
+                        value = await param_mgr.get_parameter(actual_key)
+                        is_secret = False
+                        storage_type = param_mgr.__class__.__name__.replace('Manager', '').replace('Parameter', '')
+                else:
+                    try:
+                        value = await param_mgr.get_parameter(actual_key)
+                        is_secret = False
+                        storage_type = param_mgr.__class__.__name__.replace('Manager', '').replace('Parameter', '')
+                    except Exception:
+                        # Fallback to secret if parameter retrieval fails
+                        value = await secret_mgr.get_secret(actual_key)
+                        is_secret = True
+                        storage_type = secret_mgr.__class__.__name__.replace('Manager', '').replace('Secret', '')
+                
+                results.append({
+                    'original_key': key,
+                    'actual_key': actual_key,
+                    'value': value,
+                    'type': 'Secret' if is_secret else 'Parameter',
+                    'icon': '🔐' if is_secret else '⚙️',
+                    'storage': storage_type,
+                    'success': True
+                })
+                
+            except Exception as e:
+                error_info = {
+                    'original_key': key,
+                    'actual_key': actual_key,
+                    'error': str(e),
+                    'success': False
+                }
+                errors.append(error_info)
+                results.append(error_info)
+                
+                if fail_fast:
+                    console.print(f"[red]❌ Failed to retrieve '{actual_key}': {e}[/red]")
+                    raise typer.Exit(1)
+        
+        # Format and display results
+        successful_results = [r for r in results if r['success']]
+        
+        if format_output and format_output.lower() == 'json':
+            output_data = {}
+            for result in successful_results:
+                output_data[result['actual_key']] = result['value']
+            console.print(json.dumps(output_data, indent=2))
+        
+        elif format_output and format_output.lower() == 'yaml':
+            import yaml
+            output_data = {}
+            for result in successful_results:
+                output_data[result['actual_key']] = result['value']
+            console.print(yaml.dump(output_data, default_flow_style=False))
+        
+        elif format_output and format_output.lower() == 'env':
+            for result in successful_results:
+                # Export format: KEY=value
+                value_str = str(result['value']).replace('\n', '\\n').replace('"', '\\"')
+                console.print(f"export {result['actual_key']}=\"{value_str}\"")
+        
+        elif quiet:
+            # Just output values
+            for result in successful_results:
+                console.print(f"{result['actual_key']}={result['value']}")
+        
+        else:
+            # Table format
+            table = Table()
+            table.add_column("Key", style="cyan", width=25)
+            table.add_column("Type", style="green", width=10)
+            table.add_column("Value", style="", width=30)
+            table.add_column("Storage", style="dim", width=12)
+            table.add_column("Status", style="", width=10)
+            
+            for result in results:
+                if result['success']:
+                    # Show truncated value for display
+                    display_value = str(result['value'])
+                    if len(display_value) > 28:
+                        display_value = display_value[:25] + "..."
+                    
+                    table.add_row(
+                        f"{result['icon']} {result['actual_key']}",
+                        result['type'],
+                        display_value,
+                        result['storage'],
+                        "[green]✅[/green]"
+                    )
+                else:
+                    table.add_row(
+                        f"❌ {result['actual_key']}",
+                        "-",
+                        f"[red]{result['error'][:25]}...[/red]",
+                        "-",
+                        "[red]FAILED[/red]"
+                    )
+            
+            console.print(table)
+        
+        # Summary
+        if not quiet:
+            success_count = len(successful_results)
+            error_count = len(errors)
+            console.print(f"\n[bold]Summary:[/bold] {success_count}/{len(key_list)} successful")
+            
+            if errors:
+                console.print(f"\n[red]❌ Errors ({error_count}):[/red]")
+                for error in errors[:5]:  # Show first 5 errors
+                    console.print(f"  • {error['actual_key']}: {error['error']}")
+                if len(errors) > 5:
+                    console.print(f"  • ... and {len(errors) - 5} more errors")
+                
+                if not fail_fast:
+                    console.print(f"\n[dim]💡 Use --fail-fast to stop on first error[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error during batch retrieval: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command(name="get-env")
 @handle_errors
-def get_env(
-    prefix: Optional[str] = typer.Option(None, "--prefix", "-p", help="Filter by prefix")
+@async_command
+async def get_env(
+    prefix: Optional[str] = typer.Option(None, "--prefix", "-p", help="Filter by prefix"),
+    secrets_only: bool = typer.Option(False, "--secrets-only", help="Include only secrets"),
+    parameters_only: bool = typer.Option(False, "--parameters-only", help="Include only parameters"),
+    export_format: bool = typer.Option(True, "--export/--no-export", help="Include 'export' keyword"),
+    quote_values: bool = typer.Option(True, "--quote/--no-quote", help="Quote values"),
+    uppercase: bool = typer.Option(False, "--uppercase", help="Convert keys to uppercase"),
+    file_output: Optional[str] = typer.Option(None, "--output", "-o", help="Write to file instead of stdout")
 ):
     """Output configuration as environment variables"""
-    print_not_implemented(
-        "anysecret read get-env",
-        f"Will output env vars with prefix: {prefix}"
-    )
+    from rich.console import Console
+    from rich.panel import Panel
+    from pathlib import Path
+    import sys
+    
+    console = Console()
+    
+    try:
+        # Import configuration managers
+        from ...config_loader import initialize_config
+        from ...config import get_secret_manager, get_parameter_manager
+        
+        # Initialize configuration
+        initialize_config()
+        
+        # Get managers
+        secret_mgr = await get_secret_manager()
+        param_mgr = await get_parameter_manager()
+        
+        # Collect all items
+        all_items = []
+        
+        # Get secrets if not parameters_only
+        if not parameters_only:
+            try:
+                secrets = await secret_mgr.list_secrets()
+                for key in secrets:
+                    # Apply prefix filter
+                    if prefix and not key.startswith(prefix):
+                        continue
+                    
+                    try:
+                        value = await secret_mgr.get_secret(key)
+                        all_items.append({
+                            'key': key,
+                            'value': value,
+                            'type': 'secret'
+                        })
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️  Could not retrieve secret '{key}': {e}[/yellow]", file=sys.stderr)
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Could not list secrets: {e}[/yellow]", file=sys.stderr)
+        
+        # Get parameters if not secrets_only
+        if not secrets_only:
+            try:
+                parameters = await param_mgr.list_parameters()
+                for key in parameters:
+                    # Apply prefix filter
+                    if prefix and not key.startswith(prefix):
+                        continue
+                    
+                    try:
+                        value = await param_mgr.get_parameter(key)
+                        all_items.append({
+                            'key': key,
+                            'value': value,
+                            'type': 'parameter'
+                        })
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️  Could not retrieve parameter '{key}': {e}[/yellow]", file=sys.stderr)
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Could not list parameters: {e}[/yellow]", file=sys.stderr)
+        
+        if not all_items:
+            console.print(f"[yellow]No configuration found{' with prefix ' + prefix if prefix else ''}[/yellow]", file=sys.stderr)
+            return
+        
+        # Prepare output
+        env_lines = []
+        
+        # Add header comment if writing to file
+        if file_output:
+            env_lines.append("# Environment variables exported by AnySecret")
+            env_lines.append(f"# Generated: {__import__('datetime').datetime.now().isoformat()}")
+            if prefix:
+                env_lines.append(f"# Prefix filter: {prefix}")
+            env_lines.append("")
+        
+        # Sort items for consistent output
+        all_items.sort(key=lambda x: (x['type'], x['key']))
+        
+        # Generate environment variable lines
+        for item in all_items:
+            key = item['key']
+            value = item['value']
+            
+            # Transform key if needed
+            if uppercase:
+                key = key.upper()
+            
+            # Clean and escape value
+            if value is None:
+                value = ""
+            else:
+                value_str = str(value)
+                
+                # Escape special characters for shell
+                if quote_values:
+                    # Escape quotes and backslashes
+                    value_str = value_str.replace('\\', '\\\\').replace('"', '\\"')
+                    # Handle newlines
+                    value_str = value_str.replace('\n', '\\n').replace('\r', '\\r')
+                
+                value = value_str
+            
+            # Format the export line
+            if quote_values:
+                env_line = f'{key}="{value}"'
+            else:
+                env_line = f'{key}={value}'
+            
+            if export_format:
+                env_line = f"export {env_line}"
+            
+            env_lines.append(env_line)
+        
+        # Output results
+        output_content = '\n'.join(env_lines)
+        
+        if file_output:
+            try:
+                output_path = Path(file_output)
+                with open(output_path, 'w') as f:
+                    f.write(output_content)
+                    if not output_content.endswith('\n'):
+                        f.write('\n')
+                
+                console.print(f"[green]✅ Environment variables written to: {output_path}[/green]", file=sys.stderr)
+                console.print(f"[dim]Source with: source {output_path}[/dim]", file=sys.stderr)
+                
+                # Show summary
+                secrets_count = len([i for i in all_items if i['type'] == 'secret'])
+                params_count = len([i for i in all_items if i['type'] == 'parameter'])
+                console.print(f"[bold]Summary:[/bold] {len(all_items)} variables ({secrets_count} secrets, {params_count} parameters)", file=sys.stderr)
+                
+            except Exception as e:
+                console.print(f"[red]❌ Error writing to file: {e}[/red]", file=sys.stderr)
+                raise typer.Exit(1)
+        else:
+            # Output to stdout (can be sourced directly)
+            print(output_content)
+            
+            # Show summary to stderr so it doesn't interfere with sourcing
+            if not file_output:
+                secrets_count = len([i for i in all_items if i['type'] == 'secret'])
+                params_count = len([i for i in all_items if i['type'] == 'parameter'])
+                console.print(f"[dim]# Generated {len(all_items)} variables ({secrets_count} secrets, {params_count} parameters)[/dim]", file=sys.stderr)
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error generating environment variables: {e}[/red]", file=sys.stderr)
+        raise typer.Exit(1)
 
 
 @app.command(name="get-json")
@@ -675,12 +1372,303 @@ def diff_versions(key: str, version1: str, version2: str):
 
 @app.command(name="describe")
 @handle_errors
-def describe_key(key: str):
+@async_command
+async def describe_key(
+    key: str,
+    format_output: Optional[str] = typer.Option(None, "--format", help="Output format: table|json|yaml"),
+    show_value: bool = typer.Option(False, "--show-value", help="Include the actual value (secrets will be masked)"),
+    include_history: bool = typer.Option(False, "--history", help="Include version history if available"),
+    raw: bool = typer.Option(False, "--raw", help="Raw output without formatting")
+):
     """Show detailed metadata for a key"""
-    print_not_implemented(
-        "anysecret read describe",
-        f"Will describe key '{key}' with full metadata"
-    )
+    import json
+    from datetime import datetime
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    
+    console = Console()
+    
+    # Validate format option
+    if format_output and format_output.lower() not in ['table', 'json', 'yaml']:
+        console.print(f"[red]❌ Invalid format: {format_output}[/red]")
+        console.print("[dim]Valid formats: table, json, yaml[/dim]")
+        raise typer.Exit(1)
+    
+    try:
+        # Import configuration managers
+        from ...config_loader import initialize_config
+        from ...config import get_secret_manager, get_parameter_manager
+        from ...config_manager import ConfigManager
+        
+        # Initialize configuration
+        initialize_config()
+        
+        # Get managers
+        secret_mgr = await get_secret_manager()
+        param_mgr = await get_parameter_manager()
+        
+        # Try to find the key and determine its type
+        key_info = {
+            'key': key,
+            'found': False,
+            'type': None,
+            'value': None,
+            'storage': None,
+            'metadata': {},
+            'classification': None,
+            'history': [],
+            'error': None
+        }
+        
+        # Classify the key
+        temp_config = ConfigManager({}, {})
+        classification = temp_config.classify_key(key)
+        key_info['classification'] = classification
+        
+        # Try to retrieve as the classified type first
+        if classification == 'secret':
+            try:
+                value = await secret_mgr.get_secret(key)
+                key_info['found'] = True
+                key_info['type'] = 'Secret'
+                key_info['value'] = value
+                key_info['storage'] = secret_mgr.__class__.__name__.replace('Manager', '').replace('Secret', '')
+                
+                # Try to get metadata if supported
+                if hasattr(secret_mgr, 'get_metadata'):
+                    try:
+                        metadata = await secret_mgr.get_metadata(key)
+                        if metadata:
+                            key_info['metadata'] = metadata
+                    except:
+                        pass  # Metadata not supported or available
+                
+                # Try to get version history if requested and supported
+                if include_history and hasattr(secret_mgr, 'get_versions'):
+                    try:
+                        versions = await secret_mgr.get_versions(key)
+                        if versions:
+                            key_info['history'] = versions
+                    except:
+                        pass  # Version history not supported
+                        
+            except Exception as e:
+                # Fallback to parameter
+                try:
+                    value = await param_mgr.get_parameter(key)
+                    key_info['found'] = True
+                    key_info['type'] = 'Parameter'
+                    key_info['value'] = value
+                    key_info['storage'] = param_mgr.__class__.__name__.replace('Manager', '').replace('Parameter', '')
+                    
+                    # Try to get metadata if supported
+                    if hasattr(param_mgr, 'get_metadata'):
+                        try:
+                            metadata = await param_mgr.get_metadata(key)
+                            if metadata:
+                                key_info['metadata'] = metadata
+                        except:
+                            pass
+                except Exception as param_error:
+                    key_info['error'] = f"Secret error: {e}, Parameter error: {param_error}"
+        else:
+            # Try parameter first
+            try:
+                value = await param_mgr.get_parameter(key)
+                key_info['found'] = True
+                key_info['type'] = 'Parameter'
+                key_info['value'] = value
+                key_info['storage'] = param_mgr.__class__.__name__.replace('Manager', '').replace('Parameter', '')
+                
+                # Try to get metadata if supported
+                if hasattr(param_mgr, 'get_metadata'):
+                    try:
+                        metadata = await param_mgr.get_metadata(key)
+                        if metadata:
+                            key_info['metadata'] = metadata
+                    except:
+                        pass
+                        
+                # Try to get version history if requested and supported
+                if include_history and hasattr(param_mgr, 'get_versions'):
+                    try:
+                        versions = await param_mgr.get_versions(key)
+                        if versions:
+                            key_info['history'] = versions
+                    except:
+                        pass
+                        
+            except Exception as e:
+                # Fallback to secret
+                try:
+                    value = await secret_mgr.get_secret(key)
+                    key_info['found'] = True
+                    key_info['type'] = 'Secret'
+                    key_info['value'] = value
+                    key_info['storage'] = secret_mgr.__class__.__name__.replace('Manager', '').replace('Secret', '')
+                    
+                    # Try to get metadata if supported
+                    if hasattr(secret_mgr, 'get_metadata'):
+                        try:
+                            metadata = await secret_mgr.get_metadata(key)
+                            if metadata:
+                                key_info['metadata'] = metadata
+                        except:
+                            pass
+                except Exception as secret_error:
+                    key_info['error'] = f"Parameter error: {e}, Secret error: {secret_error}"
+        
+        # Check if key was found
+        if not key_info['found']:
+            console.print(f"[red]❌ Key '{key}' not found[/red]")
+            if key_info['error']:
+                console.print(f"[dim]{key_info['error']}[/dim]")
+            console.print(f"\n[dim]💡 Use [cyan]anysecret list[/cyan] to see available keys[/dim]")
+            raise typer.Exit(1)
+        
+        # Prepare display data
+        display_value = key_info['value']
+        if key_info['type'] == 'Secret' and not show_value:
+            display_value = "[HIDDEN - use --show-value to reveal]"
+        elif show_value and isinstance(display_value, str) and len(display_value) > 100:
+            display_value = display_value[:97] + "..."
+        
+        # Format output
+        if format_output and format_output.lower() == 'json':
+            output_data = {
+                'key': key_info['key'],
+                'type': key_info['type'].lower(),
+                'classification': key_info['classification'],
+                'storage': key_info['storage'],
+                'metadata': key_info['metadata'],
+                'has_value': key_info['value'] is not None,
+                'value_length': len(str(key_info['value'])) if key_info['value'] else 0
+            }
+            if show_value:
+                output_data['value'] = key_info['value']
+            if key_info['history']:
+                output_data['version_count'] = len(key_info['history'])
+            console.print(json.dumps(output_data, indent=2, default=str))
+            
+        elif format_output and format_output.lower() == 'yaml':
+            import yaml
+            output_data = {
+                'key': key_info['key'],
+                'type': key_info['type'].lower(),
+                'classification': key_info['classification'],
+                'storage': key_info['storage'],
+                'metadata': key_info['metadata'],
+                'has_value': key_info['value'] is not None,
+                'value_length': len(str(key_info['value'])) if key_info['value'] else 0
+            }
+            if show_value:
+                output_data['value'] = key_info['value']
+            if key_info['history']:
+                output_data['version_count'] = len(key_info['history'])
+            console.print(yaml.dump(output_data, default_flow_style=False))
+            
+        elif raw:
+            # Raw output - just the value
+            if show_value:
+                print(key_info['value'] or "")
+            else:
+                print("[HIDDEN]" if key_info['type'] == 'Secret' else (key_info['value'] or ""))
+        else:
+            # Rich table format
+            icon = '🔐' if key_info['type'] == 'Secret' else '⚙️'
+            console.print(Panel.fit(
+                f"[bold green]{icon} Key Description[/bold green]\n"
+                f"Key: [cyan]{key}[/cyan] | Type: [yellow]{key_info['type']}[/yellow] | Storage: [dim]{key_info['storage']}[/dim]",
+                border_style="green"
+            ))
+            
+            # Main information table
+            info_table = Table()
+            info_table.add_column("Property", style="cyan", width=20)
+            info_table.add_column("Value", style="", width=50)
+            
+            info_table.add_row("Key Name", key_info['key'])
+            info_table.add_row("Type", f"{icon} {key_info['type']}")
+            info_table.add_row("Classification", key_info['classification'])
+            info_table.add_row("Storage Backend", key_info['storage'])
+            
+            if key_info['value'] is not None:
+                value_len = len(str(key_info['value']))
+                info_table.add_row("Value Length", f"{value_len} characters")
+                
+                if show_value:
+                    # Show actual value
+                    value_display = str(display_value)
+                    if '\n' in value_display:
+                        value_display = value_display.replace('\n', '\\n')
+                    info_table.add_row("Value", value_display)
+                else:
+                    info_table.add_row("Value", "[HIDDEN - use --show-value to reveal]" if key_info['type'] == 'Secret' else str(display_value))
+            
+            console.print(info_table)
+            
+            # Metadata table if available
+            if key_info['metadata']:
+                console.print("\n[bold]Metadata:[/bold]")
+                meta_table = Table()
+                meta_table.add_column("Key", style="yellow", width=25)
+                meta_table.add_column("Value", style="", width=45)
+                
+                for meta_key, meta_value in key_info['metadata'].items():
+                    # Format dates if they look like ISO timestamps
+                    display_meta = str(meta_value)
+                    if isinstance(meta_value, str) and 'T' in meta_value and ('Z' in meta_value or '+' in meta_value):
+                        try:
+                            dt = datetime.fromisoformat(meta_value.replace('Z', '+00:00'))
+                            display_meta = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+                        except:
+                            pass  # Keep original if parsing fails
+                    
+                    meta_table.add_row(meta_key, display_meta)
+                
+                console.print(meta_table)
+            
+            # Version history if available
+            if key_info['history']:
+                console.print(f"\n[bold]Version History:[/bold] ({len(key_info['history'])} versions)")
+                history_table = Table()
+                history_table.add_column("Version", style="green", width=10)
+                history_table.add_column("Created", style="yellow", width=20)
+                history_table.add_column("Description", style="", width=35)
+                
+                for i, version in enumerate(key_info['history'][:10]):  # Show last 10 versions
+                    version_num = str(version.get('version', i + 1))
+                    created = version.get('created_date', 'Unknown')
+                    description = version.get('description', 'No description')
+                    
+                    if isinstance(created, str) and 'T' in created:
+                        try:
+                            dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                            created = dt.strftime("%Y-%m-%d %H:%M")
+                        except:
+                            pass
+                    
+                    history_table.add_row(version_num, str(created), str(description)[:32] + "..." if len(str(description)) > 32 else str(description))
+                
+                console.print(history_table)
+                
+                if len(key_info['history']) > 10:
+                    console.print(f"[dim]... and {len(key_info['history']) - 10} more versions[/dim]")
+            
+            # Usage recommendations
+            console.print(f"\n[bold]Usage:[/bold]")
+            console.print(f"• Get value: [cyan]anysecret get {key}[/cyan]")
+            console.print(f"• Get with hint: [cyan]anysecret get {key} --hint {key_info['type'].lower()}[/cyan]")
+            if key_info['type'] == 'Secret':
+                console.print(f"• Show value: [cyan]anysecret describe {key} --show-value[/cyan]")
+            if key_info['history']:
+                console.print(f"• Version history: [cyan]anysecret versions {key}[/cyan]")
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error describing key: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command(name="tags")

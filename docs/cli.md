@@ -11,14 +11,30 @@ AnySecret is a universal configuration and secret management system that intelli
 - **Environment Auto-detection**: Detects cloud environment and suggests optimal provider configuration
 - **Incremental Configuration**: Starts simple with auto-detection, allows more complex setups as needed
 
+**Our Approach to Configuration Management:**
+
+AnySecret.io is first and foremost a **secret management system**. Configuration management is treated as a secondary concern with a pragmatic approach:
+
+1. **Secrets First**: Core focus on secure secret management using cloud-native secret managers (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault)
+
+2. **Cost-Effective Parameters**: For configuration parameters, we prioritize cost efficiency over complex features:
+   - **Cloud Storage Backend**: Uses S3, GCS, Azure Blob for parameter storage (pennies vs dollars)
+   - **File-Based Approach**: Reuses proven file formats (.json, .env, .yaml, encrypted) with cloud storage
+   - **Batch Operations**: Store multiple parameters in single files for optimal performance
+
+3. **Extensible Architecture**: Clean separation allows adding native parameter stores (Firebase Remote Config, AWS Parameter Store) as dedicated providers later
+
+4. **No Wheel Reinvention**: Leverages existing file-based parameter management with cloud storage backends rather than building custom parameter management systems
+
 **Benefits:**
-- **Cost Optimization**: Parameters are cheaper than secrets in most cloud providers
-- **Security**: Sensitive data automatically uses secure secret managers
+- **Cost Optimization**: Parameters cost pennies in cloud storage vs hundreds/month in secret managers
+- **Security**: Sensitive data automatically uses secure, encrypted secret managers
 - **Simplicity**: Single interface across all providers with intelligent defaults
+- **Performance**: Fast bulk reads for configuration (single file = hundreds of parameters)
 - **Reliability**: Fallback providers ensure availability
 - **Flexibility**: Works in any environment from local development to multi-cloud production
 
-The CLI provides a unified interface for get/set operations that automatically use the right provider for the right data type, with optional fallback chains for high availability.
+The CLI provides a unified interface for get/set operations that automatically use the right provider for the right data type, with cost-optimized parameter storage and enterprise-grade secret management.
 
 ---
 
@@ -29,16 +45,17 @@ The AnySecret CLI is a comprehensive command-line interface for universal config
 1. [Configuration and Metadata](#configuration-and-metadata)
 2. [Write Permissions and Security](#write-permissions-and-security)
 3. [ReadOnly List and Bulk Operations](#readonly-list-and-bulk-operations)
-4. [ReadOnly Item Operations](#readonly-item-operations)
-5. [Write Item Operations](#write-item-operations)
-6. [Sync Migration](#sync-migration)
-7. [Bulk Write Operations](#bulk-write-operations)
-8. [Environment Management](#environment-management)
-9. [CI/CD Integration](#cicd-integration)
-10. [Multi-Cloud Coordination](#multi-cloud-coordination)
-11. [Security and Compliance](#security-and-compliance)
-12. [Performance and Monitoring](#performance-and-monitoring)
-13. [Export and Import](#export-and-import)
+4. [Read Namespace Operations](#read-namespace-operations)
+5. [ReadOnly Item Operations](#readonly-item-operations)
+6. [Write Item Operations](#write-item-operations)
+7. [Sync Migration](#sync-migration)
+8. [Bulk Write Operations](#bulk-write-operations)
+9. [Environment Management](#environment-management)
+10. [CI/CD Integration](#cicd-integration)
+11. [Multi-Cloud Coordination](#multi-cloud-coordination)
+12. [Security and Compliance](#security-and-compliance)
+13. [Performance and Monitoring](#performance-and-monitoring)
+14. [Export and Import](#export-and-import)
 
 ---
 
@@ -153,12 +170,12 @@ anysecret list --format json            # JSON output with metadata
 anysecret list --format yaml            # YAML output with metadata
 anysecret list --format json --values    # Include parameter values in JSON
 
-# Hierarchical view
+# Hierarchical view (also available in read namespace)
 anysecret tree                          # Show hierarchical tree view
 anysecret tree --depth <n>              # Limit tree depth
 anysecret tree --prefix <prefix>        # Tree view with prefix filter
 
-# Search operations
+# Search operations (also available in read namespace)
 anysecret search <query>                # Search keys and descriptions
 anysecret search --content <query>      # Search in values (parameters only)
 anysecret search --metadata <query>     # Search in metadata
@@ -169,17 +186,185 @@ anysecret grep <pattern>                # Regex search across keys/values
 
 ```bash
 # Bulk retrieval
-anysecret get-all --prefix <prefix>     # Get all with prefix
-anysecret get-batch <file>              # Get keys from file
-anysecret get-batch <key1,key2,key3>    # Get specific keys
-anysecret get-env --prefix <prefix>     # Output as environment variables
-anysecret get-json --prefix <prefix>    # Output as JSON object
-anysecret get-yaml --prefix <prefix>    # Output as YAML object
+anysecret read get-batch <file>              # Get keys from file (one per line)
+anysecret read get-batch <key1,key2,key3>    # Get specific keys (comma-separated)
+anysecret read get-batch --format json       # Output as JSON object
+anysecret read get-batch --format yaml       # Output as YAML object
+anysecret read get-batch --format env        # Output as export statements
+anysecret read get-batch --fail-fast         # Stop on first error
+anysecret read get-batch --quiet             # Only show values
+
+# Environment variable export
+anysecret read get-env --prefix <prefix>     # Export as environment variables
+anysecret read get-env --output .env         # Write to file
+anysecret read get-env --uppercase           # Convert keys to uppercase
+anysecret read get-env --no-export           # Skip 'export' keyword
 
 # Comparison operations
 anysecret diff <env1> <env2>            # Compare environments
 anysecret diff --provider <p1> <p2>     # Compare providers
 anysecret validate-refs <file>          # Validate references in file
+```
+
+---
+
+## Read Namespace Operations
+
+The `read` namespace provides advanced read operations, analysis tools, and bulk retrieval commands for comprehensive configuration management.
+
+### Advanced List and Tree Operations
+
+```bash
+# Enhanced listing (same as top-level commands)
+anysecret read list                          # List all keys with classification
+anysecret read list --prefix <prefix>        # Filter by prefix
+anysecret read list --secrets-only           # Show only secrets
+anysecret read list --parameters-only        # Show only parameters
+anysecret read list --values                 # Show parameter values (secrets hidden)
+anysecret read list --format json|yaml       # JSON/YAML output
+anysecret read list --pattern <regex>        # Filter by regex pattern
+
+# Hierarchical tree view
+anysecret read tree                          # Show hierarchical tree view
+anysecret read tree --prefix <prefix>        # Tree view with prefix filter
+anysecret read tree --depth <n>              # Limit tree depth
+anysecret read tree --secrets-only           # Show only secrets in tree
+anysecret read tree --parameters-only        # Show only parameters in tree
+```
+
+### Search and Analysis Operations
+
+```bash
+# Advanced search capabilities
+anysecret read search <query>                # Search in key names
+anysecret read search <query> --content      # Search in values
+anysecret read search <query> --metadata     # Search in metadata
+anysecret read search <query> --regex        # Use regex patterns
+anysecret read search <query> --case-sensitive # Case sensitive search
+anysecret read search <query> --secrets-only # Search only secrets
+anysecret read search <query> --format json  # JSON output
+
+# Key analysis and description
+anysecret read describe <key>                # Show detailed key metadata
+anysecret read describe <key> --show-value   # Include actual value
+anysecret read describe <key> --history      # Include version history
+anysecret read describe <key> --format json  # JSON output
+anysecret read describe <key> --raw          # Raw value output only
+```
+
+### Bulk Operations and Export
+
+```bash
+# Batch retrieval
+anysecret read get-batch <key1,key2,key3>    # Get multiple keys
+anysecret read get-batch --file keys.txt     # Get keys from file
+anysecret read get-batch --format json       # JSON output
+anysecret read get-batch --format yaml       # YAML output  
+anysecret read get-batch --format env        # Environment export format
+anysecret read get-batch --fail-fast         # Stop on first error
+anysecret read get-batch --quiet             # Only show values
+anysecret read get-batch --prefix <prefix>   # Add prefix to keys
+
+# Environment variable export
+anysecret read get-env                       # Export all as env vars
+anysecret read get-env --prefix <prefix>     # Export with prefix filter
+anysecret read get-env --output .env         # Write to file
+anysecret read get-env --uppercase           # Convert keys to uppercase
+anysecret read get-env --no-export           # Skip 'export' keyword
+anysecret read get-env --no-quote            # Don't quote values
+anysecret read get-env --secrets-only        # Only export secrets
+anysecret read get-env --parameters-only     # Only export parameters
+```
+
+### Usage Examples
+
+```bash
+# Find all API keys
+anysecret read search "api" --content --case-sensitive
+
+# Get database configuration as JSON
+anysecret read get-batch DB_HOST,DB_PORT,DB_NAME --format json
+
+# Export staging environment to file
+anysecret read get-env --prefix staging/ --output staging.env
+
+# Analyze a specific key
+anysecret read describe API_KEY --show-value --history
+
+# Tree view of application config
+anysecret read tree --prefix app/ --depth 3
+```
+
+---
+
+## Write Namespace Operations
+
+The `anysecret write` namespace provides comprehensive write operations with intelligent routing, security controls, and rich user feedback.
+
+### Core Write Operations
+
+```bash
+# Primary set operation with intelligent routing
+anysecret write set <key> <value>           # Intelligent routing between secrets/parameters
+anysecret write set <key> <value> --hint secret      # Hint as secret
+anysecret write set <key> <value> --hint parameter   # Hint as parameter
+anysecret write set <key> <value> --json             # Parse value as JSON
+anysecret write set <key> <value> --base64           # Decode base64 value
+anysecret write set <key> <value> --description "desc" # Add description
+anysecret write set <key> <value> --tags "env:prod,team:backend" # Add tags
+anysecret write set <key> <value> --ttl 3600         # Set TTL in seconds
+anysecret write set <key> <value> --if-not-exists    # Only set if doesn't exist
+anysecret write set <key> <value> --encrypt          # Force encryption for files
+
+# Explicit secret setting
+anysecret write set-secret <key> <value>    # Force secret storage
+anysecret write set-secret <key> --file <path>       # Read from file
+anysecret write set-secret <key> --prompt            # Read from prompt
+anysecret write set-secret <key> <value> --base64    # Decode base64
+anysecret write set-secret <key> <value> --tags "sensitive:true"
+anysecret write set-secret <key> <value> --description "API key for service X"
+
+# Explicit parameter setting
+anysecret write set-parameter <key> <value>  # Force parameter storage
+anysecret write set-parameter <key> <value> --json   # Validate as JSON
+anysecret write set-parameter <key> <value> --tags "config:database"
+anysecret write set-parameter <key> <value> --description "Database config"
+```
+
+### Deletion Operations
+
+```bash
+# Delete operations with backup support
+anysecret write delete <key>                # Delete with confirmation
+anysecret write delete <key> --force        # Skip confirmation
+anysecret write delete <key> --hint secret  # Hint for routing
+anysecret write delete <key> --hint parameter # Hint for routing
+anysecret write delete <key> --backup       # Create backup (default: true)
+anysecret write delete <key> --no-backup    # Skip backup creation
+
+# Bulk delete operations
+anysecret write delete --prefix "/app/"     # Delete by prefix
+anysecret write delete --pattern "temp_.*"  # Delete by pattern
+anysecret write delete --tags "env:staging" # Delete by tags
+```
+
+### Advanced Write Features
+
+```bash
+# Conditional operations
+anysecret write update <key> <value>        # Update existing only
+anysecret write upsert <key> <value>        # Update or create
+anysecret write replace <key> <old> <new>   # Replace if current value matches
+
+# File-based operations
+anysecret write set-from-file <file>        # Set multiple from JSON/YAML
+anysecret write set-env-file <file>         # Set from .env file
+anysecret write set-template <template> <vars> # Apply template
+
+# Advanced secret operations
+anysecret write generate <key> --length 32  # Generate random secret
+anysecret write rotate <key>                # Rotate existing secret
+anysecret write expire <key> --ttl 3600     # Set expiration
 ```
 
 ---
@@ -781,41 +966,66 @@ The following table shows the implementation status of each command across diffe
 - ❌ - Not supported by provider
 - 🔄 - Partially implemented
 
-| Command | AWS | GCP | Azure | Kubernetes | Vault | GitHub Actions | Env File | Encrypted File | File JSON | File YAML |
-|---------|-----|-----|-------|------------|-------|----------------|----------|----------------|-----------|-----------|
+| Command | AWS | GCP | Azure | AWS S3 | GCS | Azure Blob | Kubernetes | Vault | GitHub Actions | Env File | Encrypted File | File JSON | File YAML |
+|---------|-----|-----|-------|--------|-----|------------|------------|-------|----------------|----------|----------------|-----------|-----------|
 | **Configuration & Metadata** |
-| `anysecret info` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret status` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret providers list` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret providers health` | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret config init` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret config validate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret config profile-create` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret config profile-list` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret config profile-use` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret patterns show` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret config patterns-add-secret` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret config patterns-add-param` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Read Operations** |
-| `anysecret list` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret tree` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
-| `anysecret search` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
-| `anysecret get` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret get-secret` | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| `anysecret get-parameter` | ✅ | ✅ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `anysecret get-prefix` | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `anysecret get-batch` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
-| `anysecret get-env` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
-| `anysecret history` | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `anysecret versions` | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `anysecret describe` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
-| `anysecret classify` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Write Operations** |
-| `anysecret set` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
-| `anysecret set-secret` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ❌ | ❌ |
-| `anysecret set-parameter` | ⏳ | ✅ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ⏳ | ⏳ |
+| `anysecret info` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret status` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret providers list` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret providers health` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config init` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config validate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config profile-create` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config profile-list` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config profile-use` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret patterns show` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config patterns-add-secret` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret config patterns-add-param` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Read Operations** | *(Updated 2025-09-01)*
+| `anysecret list` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret tree` | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret search` | ✅ | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret get` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret get-secret` | ✅ | ✅ | ⏳ | ❌ | ❌ | ❌ | ⏳ | ⏳ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `anysecret get-parameter` | ✅ | ❌ | ⏳ | ✅ | ✅ | ✅ | ⏳ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `anysecret get-prefix` | ✅ | ⏳ | ⏳ | ✅ | ✅ | ✅ | ⏳ | ⏳ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret get-batch` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret get-env` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret history` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret versions` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret describe` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret classify` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Read Namespace Commands** | *(Comprehensive read operations)*
+| `anysecret read list` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret read tree` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret read search` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret read get-batch` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret read get-env` | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret read describe` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret read grep` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret read get-json` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret read get-yaml` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret read history` | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret read versions` | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret read diff` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret read validate-refs` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| **Write Namespace Commands** | *(Comprehensive write operations)*
+| `anysecret write set` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret write set-secret` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `anysecret write set-parameter` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `anysecret write delete` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret write update` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret write upsert` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret write generate` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret write rotate` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `anysecret write set-from-file` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret write set-env-file` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| **Write Operations** | *(Updated 2025-09-01)*
+| `anysecret set` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `anysecret set-secret` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `anysecret set-parameter` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | `anysecret update` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
-| `anysecret delete` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
+| `anysecret delete` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | `anysecret edit` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
 | `anysecret generate` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ |
 | `anysecret rotate` | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -873,23 +1083,29 @@ The following table shows the implementation status of each command across diffe
 
 ### Provider-Specific Notes:
 
-**AWS**: Full secret manager and parameter store support planned. Version history available for secrets.
+**AWS Secrets Manager**: Native secret storage with automatic rotation and versioning. Full enterprise features.
 
-**GCP**: Secret Manager integration planned. Config Connector available for parameter management.
+**GCP Secret Manager**: Google Cloud native secrets with automatic replication and IAM integration. Version history supported.
 
-**Azure**: Key Vault and App Configuration support planned. Full versioning support.
+**Azure Key Vault**: Microsoft native secret management with HSM support and comprehensive audit logging.
 
-**Kubernetes**: ConfigMaps for parameters, Secrets for sensitive data. No version history support.
+**AWS S3 Parameters**: Cost-effective parameter storage using S3 JSON files. Conflict resolution with ETags. Optimized for bulk reads.
 
-**Vault**: HashiCorp Vault integration for secrets only. Strong versioning and encryption features. No parameter store capability.
+**GCS Parameters**: Google Cloud Storage for parameters. Uses generation numbers for conflict resolution. Auto-bucket creation.
 
-**GitHub Actions**: Read-only access to organization secrets. Limited write capabilities.
+**Azure Blob Parameters**: Azure Blob Storage for cost-effective parameter management. ETag-based optimistic locking.
 
-**Env File**: Simple file-based storage. No versioning or encryption.
+**Kubernetes**: ConfigMaps for parameters, Secrets for sensitive data. Native k8s integration but no version history support.
 
-**Encrypted File**: File-based with encryption. Limited versioning through backups.
+**Vault**: HashiCorp Vault integration for secrets only. Enterprise-grade versioning and encryption. No parameter store capability.
 
-**File JSON/YAML**: Structured file storage for parameters. Version control through git.
+**GitHub Actions**: Read-only access to organization secrets. Limited write capabilities for CI/CD workflows.
+
+**Env File**: Simple file-based storage. No versioning or encryption. Good for local development.
+
+**Encrypted File**: File-based with encryption. Limited versioning through backups. Uses industry-standard encryption.
+
+**File JSON/YAML**: Structured file storage for parameters. Version control through git. Human-readable formats.
 
 ---
 
