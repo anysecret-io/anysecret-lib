@@ -86,6 +86,53 @@ def load_from_cli_config() -> Optional[UnifiedConfig]:
         return None
 
 
+def load_from_profile_data(profile_data: Dict[str, Any]) -> Optional[UnifiedConfig]:
+    """
+    Load configuration from processed profile data (from --profile-data)
+    """
+    try:
+        # Extract profile configuration
+        secret_config = profile_data["secret_manager"]
+        param_config = profile_data["parameter_manager"]
+        
+        # Map string types to enums
+        secret_type = SecretManagerType(secret_config["type"])
+        param_type = ParameterManagerType(param_config["type"])
+        
+        # Build configs
+        secret_manager_config = SecretManagerConfig(
+            manager_type=secret_type,
+            config=secret_config.get("config", {}),
+            fallback_type=SecretManagerType(secret_config["fallback"]["type"]) if "fallback" in secret_config else None,
+            fallback_config=secret_config["fallback"].get("config", {}) if "fallback" in secret_config else {},
+            enable_caching=secret_config.get("config", {}).get("cache_ttl", 300) > 0,
+            cache_ttl=secret_config.get("config", {}).get("cache_ttl", 300)
+        )
+        
+        parameter_manager_config = ParameterManagerConfig(
+            manager_type=param_type,
+            config=param_config.get("config", {}),
+            fallback_type=ParameterManagerType(param_config["fallback"]["type"]) if "fallback" in param_config else None,
+            fallback_config=param_config["fallback"].get("config", {}) if "fallback" in param_config else {},
+            enable_caching=param_config.get("config", {}).get("cache_ttl", 300) > 0,
+            cache_ttl=param_config.get("config", {}).get("cache_ttl", 300)
+        )
+        
+        unified_config = UnifiedConfig(
+            secret_config=secret_manager_config,
+            parameter_config=parameter_manager_config,
+            custom_secret_patterns=[],  # Profile data doesn't include these currently
+            custom_parameter_patterns=[]
+        )
+        
+        logger.info(f"Loaded configuration from profile data: {profile_data['profile_name']}")
+        return unified_config
+        
+    except Exception as e:
+        logger.error(f"Could not load profile data: {e}")
+        return None
+
+
 def load_from_environment() -> Optional[UnifiedConfig]:
     """
     Load configuration from environment variables (backward compatibility)
@@ -197,16 +244,23 @@ def _build_parameter_config_from_env(manager_type: ParameterManagerType) -> Para
     )
 
 
-def initialize_config():
+def initialize_config(profile_data: Optional[Dict[str, Any]] = None):
     """
     Initialize the configuration system with priority:
-    1. CLI config file (~/.anysecret/config.json)
-    2. Environment variables (backward compatibility)
-    3. Auto-detection
+    1. Profile data (from --profile-data parameter)
+    2. CLI config file (~/.anysecret/config.json)
+    3. Environment variables (backward compatibility)
+    4. Auto-detection
     """
     
-    # Try CLI config first
-    config = load_from_cli_config()
+    # Try profile data first if provided
+    config = None
+    if profile_data:
+        config = load_from_profile_data(profile_data)
+    
+    # Try CLI config if no profile data
+    if not config:
+        config = load_from_cli_config()
     
     # Fall back to environment variables
     if not config:

@@ -1,21 +1,64 @@
 # Provider Setup Guide
 
-Complete setup instructions for all supported cloud providers and storage backends.
+Complete setup instructions for configuring cloud providers with the AnySecret CLI.
 
 ## 🎯 Overview
 
-AnySecret.io supports multiple providers for both **secrets** (sensitive data) and **parameters** (configuration data). This guide shows you how to configure each provider with authentication, permissions, and best practices.
+AnySecret CLI works with multiple providers for **secrets** (sensitive data) and **parameters** (configuration data). This guide shows you how to authenticate and configure each provider.
 
 ## 📋 Provider Matrix
 
-| Provider | Secrets Storage | Parameters Storage | Auto-Detection | Production Ready |
-|----------|----------------|-------------------|----------------|------------------|
-| **AWS** | Secrets Manager | Parameter Store | ✅ | ✅ |
-| **Google Cloud** | Secret Manager | Config Connector | ✅ | ✅ |
-| **Microsoft Azure** | Key Vault | App Configuration | ✅ | ✅ |
-| **Kubernetes** | Secrets | ConfigMaps | ✅ | ✅ |
-| **HashiCorp Vault** | KV Store | KV Store | ✅ | ✅ |
-| **File-Based** | Encrypted Files | JSON/YAML/ENV | ✅ | ⚠️ |
+| Provider | Secrets Storage | Parameters Storage | Cost (Monthly) | Auto-Setup |
+|----------|----------------|--------------------|--------------|----|
+| **Local Files** | .env files | JSON/YAML | Free | ✅ |
+| **AWS** | Secrets Manager | S3 / Parameter Store | $0.40 / $0.01 | ✅ |
+| **GCP** | Secret Manager | GCS Storage | $0.40 / $0.01 | ✅ |
+| **Azure** | Key Vault | Blob Storage | $0.40 / $0.01 | ✅ |
+| **Kubernetes** | Secrets | ConfigMaps | Free* | ⚠️ |
+| **HashiCorp Vault** | KV Store | KV Store | Variable | ❌ |
+
+*Free but requires cluster infrastructure costs
+
+---
+
+## 🏠 Local Files (Development)
+
+Perfect for development and hobby projects. No cloud costs, works offline.
+
+### Setup
+
+```bash
+# Create local profile (uses files in ~/.anysecret/)
+anysecret config profile-create dev-local
+
+# Start adding configuration
+anysecret set DATABASE_PASSWORD "dev_password_123"
+anysecret set DATABASE_HOST "localhost"
+
+# Check where files are stored
+anysecret info
+# Shows: ~/.anysecret/profiles/dev-local/
+```
+
+### File Structure
+
+```bash
+~/.anysecret/profiles/dev-local/
+├── secrets.env          # Secret values (chmod 600)
+├── parameters.json      # Parameter values  
+└── metadata.json        # Key metadata
+```
+
+### Advanced Local Setup
+
+```bash
+# Use custom directory
+anysecret config profile-create custom-dev --storage-path ./my-config
+
+# Use different formats
+anysecret config profile-create yaml-config --parameter-format yaml
+anysecret config profile-create env-only --secret-format env --parameter-format env
+```
 
 ---
 
@@ -23,1102 +66,558 @@ AnySecret.io supports multiple providers for both **secrets** (sensitive data) a
 
 ### Prerequisites
 
-1. AWS Account with appropriate permissions
-2. AWS CLI configured or IAM roles set up
-3. Python packages: `pip install anysecret-io[aws]`
+1. AWS account with appropriate permissions
+2. AWS CLI configured: `aws configure`
+3. AnySecret installed: `pip install anysecret-io`
+
+### Quick Setup
+
+```bash
+# Create AWS profile (auto-detects region and credentials)
+anysecret config profile-create aws-prod --provider aws
+
+# Test connection
+anysecret providers health
+# Output: aws-secrets-manager ✅ connected
+#         aws-s3-parameters ✅ connected
+```
 
 ### Authentication Methods
 
-#### Option 1: IAM Roles (Recommended for EC2/ECS/Lambda)
-
-```python
-# Auto-detected in AWS environments
-from anysecret import get_config_manager
-
-# No configuration needed - uses instance/task role
-config = await get_config_manager()
-```
-
-#### Option 2: AWS Profiles
-
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.AWS,
-    secret_config={
-        "region": "us-east-1",
-        "profile": "production"  # AWS CLI profile
-    },
-    parameter_manager_type=ManagerType.AWS_PARAMETER_STORE,
-    parameter_config={
-        "region": "us-east-1",
-        "profile": "production"
-    }
-)
-
-manager = await get_config_manager(config=config)
-```
-
-#### Option 3: Access Keys (Development Only)
-
+#### Option 1: AWS CLI Profile (Recommended)
 ```bash
-# Environment variables
-export AWS_ACCESS_KEY_ID=AKIA...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_DEFAULT_REGION=us-east-1
+# Configure AWS CLI first
+aws configure --profile production
+
+# Create AnySecret profile using AWS profile
+anysecret config profile-create prod --provider aws --aws-profile production
 ```
 
-### Required IAM Permissions
+#### Option 2: Environment Variables
+```bash
+export AWS_ACCESS_KEY_ID="your_key"
+export AWS_SECRET_ACCESS_KEY="your_secret" 
+export AWS_DEFAULT_REGION="us-east-1"
 
-#### For AWS Secrets Manager:
+anysecret config profile-create prod --provider aws
+```
+
+#### Option 3: IAM Roles (EC2/ECS/Lambda)
+```bash
+# No configuration needed - auto-detected
+anysecret config profile-create prod --provider aws
+# Uses instance/task role automatically
+```
+
+### Required Permissions
+
+Create an IAM policy with minimum required permissions:
+
 ```json
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "secretsmanager:GetSecretValue",
-                "secretsmanager:ListSecrets",
-                "secretsmanager:DescribeSecret"
-            ],
-            "Resource": "*"
-        }
-    ]
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:CreateSecret", 
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:ListSecrets"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:*:secret:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject", 
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::your-anysecret-bucket",
+        "arn:aws:s3:::your-anysecret-bucket/*"
+      ]
+    }
+  ]
 }
 ```
 
-#### For AWS Parameter Store:
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "ssm:GetParameter",
-                "ssm:GetParameters",
-                "ssm:GetParametersByPath",
-                "ssm:DescribeParameters"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "kms:Decrypt"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-```
+### Configuration Options
 
-### Setting Up Secrets & Parameters
-
-#### Create secrets in AWS Secrets Manager:
 ```bash
-# Using AWS CLI
-aws secretsmanager create-secret \
-    --name "prod/database/password" \
-    --description "Production database password" \
-    --secret-string "mysecretpassword123"
+# Specify region
+anysecret config profile-create prod --provider aws --region us-west-2
 
-aws secretsmanager create-secret \
-    --name "prod/api/stripe-key" \
-    --secret-string "sk_live_abc123..."
-```
+# Use Parameter Store instead of S3 for parameters
+anysecret config profile-create prod --provider aws --parameter-store
 
-#### Create parameters in Parameter Store:
-```bash
-# Standard parameters
-aws ssm put-parameter \
-    --name "/prod/database/host" \
-    --value "db.example.com" \
-    --type "String"
-
-# Encrypted parameters
-aws ssm put-parameter \
-    --name "/prod/database/connection-string" \
-    --value "postgresql://user:pass@host:5432/db" \
-    --type "SecureString"
-```
-
-### Configuration Examples
-
-#### Basic AWS Setup:
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.AWS,
-    secret_config={
-        "region": "us-east-1"
-    },
-    parameter_manager_type=ManagerType.AWS_PARAMETER_STORE,
-    parameter_config={
-        "region": "us-east-1",
-        "path_prefix": "/prod/",  # Optional: only load parameters with this prefix
-        "decrypt": True  # Decrypt SecureString parameters
-    }
-)
-
-manager = await get_config_manager(config=config)
-
-# Usage
-db_password = await manager.get_secret("prod/database/password")
-db_host = await manager.get_parameter("/prod/database/host")
-```
-
-#### Multi-Region Setup:
-```python
-config = ConfigManagerConfig(
-    # Primary region
-    secret_manager_type=ManagerType.AWS,
-    secret_config={"region": "us-east-1"},
-    
-    # Fallback region
-    secret_fallback_type=ManagerType.AWS,
-    secret_fallback_config={"region": "us-west-2"}
-)
+# Custom S3 bucket for parameters
+anysecret config profile-create prod --provider aws --s3-bucket my-config-bucket
 ```
 
 ---
 
-## 🚀 Google Cloud Setup
+## 🌐 Google Cloud Setup
 
 ### Prerequisites
 
-1. Google Cloud Project with APIs enabled
-2. Service account or Application Default Credentials
-3. Python packages: `pip install anysecret-io[gcp]`
+1. GCP project with billing enabled
+2. `gcloud` CLI configured: `gcloud init`
+3. Required APIs enabled:
+   ```bash
+   gcloud services enable secretmanager.googleapis.com
+   gcloud services enable storage.googleapis.com
+   ```
 
-### Enable Required APIs
+### Quick Setup
 
 ```bash
-# Enable Secret Manager API
-gcloud services enable secretmanager.googleapis.com
+# Authenticate with GCP
+gcloud auth application-default login
 
-# Enable Resource Manager API (for Config Connector)
-gcloud services enable cloudresourcemanager.googleapis.com
+# Create GCP profile (auto-detects project)
+anysecret config profile-create gcp-prod --provider gcp
+
+# Test connection
+anysecret providers health
 ```
 
 ### Authentication Methods
 
-#### Option 1: Service Account Key (Development)
-
+#### Option 1: Application Default Credentials (Recommended)
 ```bash
-# Create service account
-gcloud iam service-accounts create anysecret-service \
-    --description="AnySecret.io service account" \
-    --display-name="AnySecret Service Account"
-
-# Create and download key
-gcloud iam service-accounts keys create ~/anysecret-key.json \
-    --iam-account=anysecret-service@PROJECT_ID.iam.gserviceaccount.com
-
-# Set environment variable
-export GOOGLE_APPLICATION_CREDENTIALS=~/anysecret-key.json
-```
-
-#### Option 2: Application Default Credentials (Recommended)
-
-```bash
-# For local development
 gcloud auth application-default login
-
-# For production (automatically detected in GCP environments)
-# No configuration needed in Cloud Run, GKE, Compute Engine
+anysecret config profile-create prod --provider gcp
 ```
 
-#### Option 3: Workload Identity (GKE)
-
+#### Option 2: Service Account Key
 ```bash
-# Create Kubernetes service account
-kubectl create serviceaccount anysecret-ksa
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+anysecret config profile-create prod --provider gcp
+```
 
-# Bind to Google service account
-gcloud iam service-accounts add-iam-policy-binding \
-    --role roles/iam.workloadIdentityUser \
-    --member "serviceAccount:PROJECT_ID.svc.id.goog[NAMESPACE/anysecret-ksa]" \
-    anysecret-service@PROJECT_ID.iam.gserviceaccount.com
-
-# Annotate Kubernetes service account
-kubectl annotate serviceaccount anysecret-ksa \
-    iam.gke.io/gcp-service-account=anysecret-service@PROJECT_ID.iam.gserviceaccount.com
+#### Option 3: Specific Project
+```bash
+anysecret config profile-create prod --provider gcp --project my-project-id
 ```
 
 ### Required IAM Roles
 
+Grant these roles to your service account or user:
+
 ```bash
 # For Secret Manager
 gcloud projects add-iam-policy-binding PROJECT_ID \
-    --member="serviceAccount:anysecret-service@PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/secretmanager.secretAccessor"
+  --member="user:your-email@company.com" \
+  --role="roles/secretmanager.admin"
 
-# For creating/managing secrets (optional)
+# For Cloud Storage (parameters)  
 gcloud projects add-iam-policy-binding PROJECT_ID \
-    --member="serviceAccount:anysecret-service@PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/secretmanager.admin"
+  --member="user:your-email@company.com" \
+  --role="roles/storage.objectAdmin"
+
+# Create bucket for parameters
+gsutil mb gs://my-anysecret-config-bucket
 ```
 
-### Setting Up Secrets & Parameters
+### Configuration Options
 
-#### Create secrets in Secret Manager:
 ```bash
-# Create secrets
-echo -n "mysecretpassword123" | gcloud secrets create prod-database-password --data-file=-
-echo -n "sk_live_abc123..." | gcloud secrets create prod-stripe-key --data-file=-
+# Specify project and region
+anysecret config profile-create prod --provider gcp \
+  --project my-project \
+  --region us-central1
 
-# Create secret with labels
-gcloud secrets create prod-jwt-secret \
-    --labels=env=production,app=myapp \
-    --data-file=jwt-secret.txt
-```
-
-#### Create parameters using Config Connector (Kubernetes):
-```yaml
-# configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: default
-data:
-  database_host: "db.example.com"
-  api_timeout: "30"
-  log_level: "info"
-  max_retries: "5"
-```
-
-### Configuration Examples
-
-#### Basic GCP Setup:
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.GCP,
-    secret_config={
-        "project_id": "my-project-123",
-        "location": "us-central1"  # Optional: for regional secrets
-    },
-    parameter_manager_type=ManagerType.KUBERNETES_CONFIGMAP,
-    parameter_config={
-        "namespace": "default",
-        "configmap_name": "app-config"
-    }
-)
-
-manager = await get_config_manager(config=config)
-
-# Usage
-db_password = await manager.get_secret("prod-database-password")
-db_host = await manager.get_parameter("database_host")
-```
-
-#### Custom Credentials:
-```python
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.GCP,
-    secret_config={
-        "project_id": "my-project-123",
-        "credentials_path": "/path/to/service-account.json"
-    }
-)
+# Custom storage bucket
+anysecret config profile-create prod --provider gcp \
+  --storage-bucket my-custom-bucket
 ```
 
 ---
 
-## 🌐 Microsoft Azure Setup
+## 🔷 Azure Setup
 
 ### Prerequisites
 
-1. Azure subscription with Key Vault and App Configuration services
-2. Service principal or managed identity
-3. Python packages: `pip install anysecret-io[azure]`
+1. Azure subscription
+2. Azure CLI configured: `az login`
+3. Resource group and Key Vault created
+
+### Quick Setup
+
+```bash
+# Authenticate with Azure
+az login
+
+# Create Azure profile
+anysecret config profile-create azure-prod --provider azure \
+  --key-vault my-keyvault \
+  --resource-group my-rg
+
+# Test connection
+anysecret providers health
+```
 
 ### Authentication Methods
 
-#### Option 1: Service Principal (Development)
-
+#### Option 1: Azure CLI (Interactive)
 ```bash
-# Create service principal
-az ad sp create-for-rbac --name anysecret-sp --role contributor
-
-# Output:
-# {
-#   "appId": "your-client-id",
-#   "password": "your-client-secret",
-#   "tenant": "your-tenant-id"
-# }
-
-# Set environment variables
-export AZURE_CLIENT_ID=your-client-id
-export AZURE_CLIENT_SECRET=your-client-secret
-export AZURE_TENANT_ID=your-tenant-id
+az login
+anysecret config profile-create prod --provider azure --key-vault my-vault
 ```
 
-#### Option 2: Managed Identity (Production)
+#### Option 2: Service Principal
+```bash
+export AZURE_CLIENT_ID="client-id"
+export AZURE_CLIENT_SECRET="client-secret" 
+export AZURE_TENANT_ID="tenant-id"
 
-```python
-# Automatically detected in Azure environments
-from anysecret import get_config_manager
-
-# No configuration needed - uses system/user-assigned managed identity
-config = await get_config_manager()
+anysecret config profile-create prod --provider azure --key-vault my-vault
 ```
 
-### Setting Up Key Vault
+#### Option 3: Managed Identity (Azure VMs)
+```bash
+# No configuration needed in Azure environment
+anysecret config profile-create prod --provider azure --key-vault my-vault
+```
 
-#### Create Key Vault:
+### Azure Resource Setup
+
 ```bash
 # Create resource group
 az group create --name anysecret-rg --location eastus
 
-# Create Key Vault
+# Create Key Vault for secrets
 az keyvault create \
-    --name my-anysecret-vault \
-    --resource-group anysecret-rg \
-    --location eastus \
-    --enabled-for-disk-encryption true
+  --name my-anysecret-vault \
+  --resource-group anysecret-rg \
+  --location eastus
+
+# Create Storage Account for parameters
+az storage account create \
+  --name myanysecretstore \
+  --resource-group anysecret-rg \
+  --location eastus \
+  --sku Standard_LRS
 ```
 
-#### Grant Permissions:
+### Required Permissions
+
 ```bash
-# For service principal
+# Grant Key Vault access
 az keyvault set-policy \
-    --name my-anysecret-vault \
-    --spn your-client-id \
-    --secret-permissions get list
+  --name my-anysecret-vault \
+  --upn your-email@company.com \
+  --secret-permissions get set delete list
 
-# For managed identity
-az keyvault set-policy \
-    --name my-anysecret-vault \
-    --object-id managed-identity-object-id \
-    --secret-permissions get list
-```
-
-#### Create secrets:
-```bash
-# Create secrets in Key Vault
-az keyvault secret set \
-    --vault-name my-anysecret-vault \
-    --name "prod-database-password" \
-    --value "mysecretpassword123"
-
-az keyvault secret set \
-    --vault-name my-anysecret-vault \
-    --name "prod-stripe-key" \
-    --value "sk_live_abc123..."
-```
-
-### Setting Up App Configuration
-
-#### Create App Configuration:
-```bash
-# Create App Configuration store
-az appconfig create \
-    --name my-app-config \
-    --resource-group anysecret-rg \
-    --location eastus \
-    --sku standard
-```
-
-#### Grant Permissions:
-```bash
-# Get connection string
-CONNECTION_STRING=$(az appconfig credential list \
-    --name my-app-config \
-    --resource-group anysecret-rg \
-    --query "[?name=='Primary'].connectionString" \
-    --output tsv)
-```
-
-#### Create parameters:
-```bash
-# Set configuration values
-az appconfig kv set \
-    --name my-app-config \
-    --key "database_host" \
-    --value "db.example.com" \
-    --label "Production"
-
-az appconfig kv set \
-    --name my-app-config \
-    --key "api_timeout" \
-    --value "30" \
-    --label "Production"
-```
-
-### Configuration Examples
-
-#### Basic Azure Setup:
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.AZURE,
-    secret_config={
-        "vault_name": "my-anysecret-vault",
-        "tenant_id": "your-tenant-id",
-        "client_id": "your-client-id",
-        "client_secret": "your-client-secret"
-    },
-    parameter_manager_type=ManagerType.AZURE_APP_CONFIG,
-    parameter_config={
-        "connection_string": CONNECTION_STRING,
-        "label": "Production",
-        "key_filter": "database_*,api_*"  # Optional: filter keys
-    }
-)
-
-manager = await get_config_manager(config=config)
-
-# Usage
-db_password = await manager.get_secret("prod-database-password")
-db_host = await manager.get_parameter("database_host")
-```
-
-#### Managed Identity Setup:
-```python
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.AZURE,
-    secret_config={
-        "vault_name": "my-anysecret-vault"
-        # No credentials needed - uses managed identity
-    }
-)
+# Grant Storage access
+az role assignment create \
+  --assignee your-email@company.com \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/SUBSCRIPTION_ID/resourceGroups/anysecret-rg"
 ```
 
 ---
 
-## ⚓ Kubernetes Setup
+## ☸️ Kubernetes Setup
 
 ### Prerequisites
 
-1. Kubernetes cluster access
-2. kubectl configured
-3. Python packages: `pip install anysecret-io[k8s]`
+1. Kubernetes cluster with `kubectl` access
+2. Appropriate RBAC permissions
+3. Namespace created for AnySecret
 
-### Authentication Methods
+### Setup
 
-#### Option 1: Service Account (Recommended)
+```bash
+# Check cluster access
+kubectl get nodes
+
+# Create namespace
+kubectl create namespace anysecret
+
+# Create Kubernetes profile
+anysecret config profile-create k8s-prod --provider kubernetes \
+  --namespace anysecret
+
+# Test connection
+anysecret providers health
+```
+
+### RBAC Configuration
 
 ```yaml
-# service-account.yaml
+# anysecret-rbac.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: anysecret-service-account
-  namespace: default
+  name: anysecret
+  namespace: anysecret
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  namespace: default
-  name: secret-reader
+  namespace: anysecret
+  name: anysecret-role
 rules:
 - apiGroups: [""]
   resources: ["secrets", "configmaps"]
-  verbs: ["get", "list"]
+  verbs: ["get", "list", "create", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: read-secrets
-  namespace: default
+  name: anysecret-binding
+  namespace: anysecret
 subjects:
 - kind: ServiceAccount
-  name: anysecret-service-account
-  namespace: default
+  name: anysecret
+  namespace: anysecret
 roleRef:
   kind: Role
-  name: secret-reader
+  name: anysecret-role
   apiGroup: rbac.authorization.k8s.io
 ```
 
-#### Option 2: External kubeconfig
-
-```python
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.KUBERNETES,
-    secret_config={
-        "kubeconfig_path": "~/.kube/config",
-        "context": "production-cluster"
-    }
-)
-```
-
-### Setting Up Secrets & ConfigMaps
-
-#### Create Kubernetes Secrets:
 ```bash
-# Create secret from literals
-kubectl create secret generic app-secrets \
-    --from-literal=database-password=mysecretpassword123 \
-    --from-literal=stripe-key=sk_live_abc123... \
-    --namespace=default
-
-# Create secret from files
-kubectl create secret generic app-certs \
-    --from-file=tls.crt=server.crt \
-    --from-file=tls.key=server.key
+kubectl apply -f anysecret-rbac.yaml
 ```
 
-#### Create ConfigMaps:
+### Configuration Options
+
 ```bash
-# Create configmap from literals
-kubectl create configmap app-config \
-    --from-literal=database-host=db.example.com \
-    --from-literal=api-timeout=30 \
-    --from-literal=log-level=info
+# Use custom kubeconfig
+anysecret config profile-create k8s --provider kubernetes \
+  --kubeconfig ./my-cluster-config
 
-# Create from file
-kubectl create configmap app-config \
-    --from-env-file=app.properties
-```
+# Different namespace
+anysecret config profile-create k8s --provider kubernetes \
+  --namespace my-app-namespace
 
-#### Using YAML manifests:
-```yaml
-# secrets.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: app-secrets
-  namespace: default
-type: Opaque
-data:
-  database-password: bXlzZWNyZXRwYXNzd29yZDEyMw==  # base64 encoded
-  stripe-key: c2tfbGl2ZV9hYmMxMjMuLi4=
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: default
-data:
-  database-host: "db.example.com"
-  api-timeout: "30"
-  log-level: "info"
-  max-retries: "5"
-```
-
-### Configuration Examples
-
-#### Basic Kubernetes Setup:
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.KUBERNETES,
-    secret_config={
-        "namespace": "default",
-        "secret_name": "app-secrets"  # Optional: specific secret name
-    },
-    parameter_manager_type=ManagerType.KUBERNETES_CONFIGMAP,
-    parameter_config={
-        "namespace": "default", 
-        "configmap_name": "app-config"  # Optional: specific configmap name
-    }
-)
-
-manager = await get_config_manager(config=config)
-
-# Usage
-db_password = await manager.get_secret("database-password")
-db_host = await manager.get_parameter("database-host")
-```
-
-#### Multi-namespace Setup:
-```python
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.KUBERNETES,
-    secret_config={
-        "namespace": "production",
-        "secret_name": "prod-secrets"
-    },
-    parameter_manager_type=ManagerType.KUBERNETES_CONFIGMAP,
-    parameter_config={
-        "namespace": "production",
-        "configmap_name": "prod-config"
-    }
-)
+# Specific secret/configmap names
+anysecret config profile-create k8s --provider kubernetes \
+  --secret-name app-secrets \
+  --configmap-name app-config
 ```
 
 ---
 
-## 🔐 HashiCorp Vault Setup
+## 🏗️ HashiCorp Vault Setup
 
 ### Prerequisites
 
-1. HashiCorp Vault server running
-2. Authentication method configured
-3. Python packages: `pip install anysecret-io[vault]`
+1. Vault server running and accessible
+2. Vault CLI installed: Download from vault.io
+3. Appropriate authentication configured
+
+### Setup
+
+```bash
+# Set Vault address
+export VAULT_ADDR="https://vault.company.com"
+
+# Authenticate (multiple methods available)
+vault auth -method=userpass username=myuser
+
+# Create Vault profile
+anysecret config profile-create vault-prod --provider vault \
+  --vault-url $VAULT_ADDR \
+  --vault-path secret/
+
+# Test connection
+anysecret providers health
+```
 
 ### Authentication Methods
 
 #### Option 1: Token Authentication
-
-```python
-import os
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-os.environ['VAULT_TOKEN'] = 'your-vault-token'
-
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.VAULT,
-    secret_config={
-        "url": "https://vault.example.com:8200",
-        "mount_point": "secret",  # KV v2 mount point
-        "path_prefix": "myapp/"   # Optional path prefix
-    },
-    parameter_manager_type=ManagerType.VAULT,
-    parameter_config={
-        "url": "https://vault.example.com:8200", 
-        "mount_point": "config",
-        "path_prefix": "myapp/"
-    }
-)
-```
-
-#### Option 2: AppRole Authentication
-
-```python
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.VAULT,
-    secret_config={
-        "url": "https://vault.example.com:8200",
-        "auth_method": "approle",
-        "role_id": "your-role-id",
-        "secret_id": "your-secret-id",
-        "mount_point": "secret"
-    }
-)
-```
-
-#### Option 3: Kubernetes Authentication
-
-```python
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.VAULT,
-    secret_config={
-        "url": "https://vault.example.com:8200",
-        "auth_method": "kubernetes",
-        "role": "myapp-role",
-        "jwt_path": "/var/run/secrets/kubernetes.io/serviceaccount/token"
-    }
-)
-```
-
-### Setting Up Vault
-
-#### Enable KV v2 secret engine:
 ```bash
-# Enable secrets engine
-vault secrets enable -path=secret kv-v2
-vault secrets enable -path=config kv-v2
-
-# Create policies
-vault policy write myapp-policy - <<EOF
-path "secret/data/myapp/*" {
-  capabilities = ["read", "list"]
-}
-path "config/data/myapp/*" {
-  capabilities = ["read", "list"]
-}
-EOF
+export VAULT_TOKEN="your-vault-token"
+anysecret config profile-create vault --provider vault
 ```
 
-#### Create secrets and parameters:
+#### Option 2: Username/Password
 ```bash
-# Create secrets
-vault kv put secret/myapp/database password=mysecretpassword123
-vault kv put secret/myapp/api stripe-key=sk_live_abc123...
-
-# Create parameters
-vault kv put config/myapp/database host=db.example.com port=5432
-vault kv put config/myapp/api timeout=30 max-retries=5
+anysecret config profile-create vault --provider vault \
+  --vault-auth userpass \
+  --vault-username myuser
+# Will prompt for password
 ```
 
-#### Set up AppRole authentication:
+#### Option 3: AWS IAM Authentication
 ```bash
-# Enable AppRole auth
-vault auth enable approle
-
-# Create AppRole
-vault write auth/approle/role/myapp-role \
-    token_policies="myapp-policy" \
-    token_ttl=1h \
-    token_max_ttl=4h
-
-# Get role ID and secret ID
-vault read auth/approle/role/myapp-role/role-id
-vault write -f auth/approle/role/myapp-role/secret-id
-```
-
-### Configuration Examples
-
-#### Basic Vault Setup:
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.VAULT,
-    secret_config={
-        "url": "https://vault.example.com:8200",
-        "token": "your-vault-token",
-        "mount_point": "secret",
-        "path_prefix": "myapp/",
-        "verify": True  # SSL verification
-    },
-    parameter_manager_type=ManagerType.VAULT,
-    parameter_config={
-        "url": "https://vault.example.com:8200",
-        "token": "your-vault-token", 
-        "mount_point": "config",
-        "path_prefix": "myapp/"
-    }
-)
-
-manager = await get_config_manager(config=config)
-
-# Usage
-db_password = await manager.get_secret("database/password")  # From secret/myapp/database
-db_host = await manager.get_parameter("database/host")       # From config/myapp/database
+anysecret config profile-create vault --provider vault \
+  --vault-auth aws \
+  --vault-role my-vault-role
 ```
 
 ---
 
-## 📁 File-Based Providers
+## 🔧 Profile Management
 
-### Prerequisites
+### List and Switch Profiles
 
-Python packages: `pip install anysecret-io` (included in base)
-
-### Encrypted Files
-
-#### Create encrypted secret file:
 ```bash
-# Create secrets file
-cat > secrets.json << 'EOF'
-{
-  "database_password": "mysecretpassword123",
-  "stripe_secret_key": "sk_live_abc123...",
-  "jwt_secret": "your-jwt-secret"
-}
-EOF
+# List all profiles
+anysecret config profile-list
 
-# Encrypt with AnySecret CLI
-anysecret encrypt secrets.json secrets.json.enc --password mypassword
+# Switch active profile
+anysecret config profile-use production
 
-# Remove plaintext file
-rm secrets.json
+# Show current profile info
+anysecret info
 ```
 
-#### Configuration:
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
+### Profile Export/Import
 
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.ENCRYPTED_FILE,
-    secret_config={
-        "file_path": "/etc/secrets/secrets.json.enc",
-        "password": "mypassword",  # Or use ANYSECRET_PASSWORD env var
-        "format": "json"  # json, yaml, or env
-    },
-    parameter_manager_type=ManagerType.JSON_FILE,
-    parameter_config={
-        "file_path": "/etc/config/parameters.json"
-    }
-)
-```
-
-### Environment Files (.env)
-
-#### Create .env file:
 ```bash
-cat > .env << 'EOF'
-# Secrets (auto-detected)
-DATABASE_PASSWORD=mysecretpassword123
-STRIPE_SECRET_KEY=sk_live_abc123...
-JWT_SECRET=your-jwt-secret
+# Export for CI/CD
+anysecret config profile-export production --base64 > prod.txt
 
-# Parameters (auto-detected)
-DATABASE_HOST=db.example.com
-API_TIMEOUT=30
-LOG_LEVEL=info
-MAX_RETRIES=5
-EOF
+# Import profile
+anysecret config profile-import --profile-data "$(cat prod.txt)"
+
+# Encrypt sensitive profiles
+anysecret config profile-export production --encrypt > prod.enc
 ```
 
-#### Configuration:
-```python
-config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.ENV_FILE,
-    secret_config={
-        "file_path": ".env"
-    },
-    parameter_manager_type=ManagerType.ENV_FILE,
-    parameter_config={
-        "file_path": ".env"
-    }
-)
+### Profile Configuration Files
 
-# Or use auto-detection (will find .env automatically)
-manager = await get_config_manager()
-```
+Profiles are stored in `~/.anysecret/profiles/`:
 
-### JSON/YAML Files
-
-#### JSON configuration:
-```json
-// parameters.json
-{
-  "database": {
-    "host": "db.example.com",
-    "port": 5432,
-    "pool_size": 10
-  },
-  "api": {
-    "timeout": 30,
-    "max_retries": 5,
-    "base_url": "https://api.example.com"
-  },
-  "features": {
-    "feature_x_enabled": true,
-    "feature_y_enabled": false
-  }
-}
-```
-
-#### YAML configuration:
-```yaml
-# parameters.yaml
-database:
-  host: db.example.com
-  port: 5432
-  pool_size: 10
-
-api:
-  timeout: 30
-  max_retries: 5
-  base_url: "https://api.example.com"
-
-features:
-  feature_x_enabled: true
-  feature_y_enabled: false
-```
-
-#### Configuration:
-```python
-config = ConfigManagerConfig(
-    parameter_manager_type=ManagerType.JSON_FILE,
-    parameter_config={
-        "file_path": "/etc/config/parameters.json",
-        "key_separator": "."  # Access nested keys with dots: "database.host"
-    }
-)
-
-# Or YAML
-config = ConfigManagerConfig(
-    parameter_manager_type=ManagerType.YAML_FILE,
-    parameter_config={
-        "file_path": "/etc/config/parameters.yaml",
-        "key_separator": "."
-    }
-)
-
-manager = await get_config_manager(config=config)
-
-# Access nested values
-db_host = await manager.get_parameter("database.host")
-timeout = await manager.get_parameter("api.timeout")
+```bash
+~/.anysecret/
+├── config.json          # Global settings
+└── profiles/
+    ├── dev-local/        # Local file profile
+    ├── aws-prod/         # AWS profile  
+    └── gcp-staging/      # GCP profile
 ```
 
 ---
 
-## 🔧 Multi-Provider Examples
+## 🔍 Troubleshooting
 
-### Hybrid Cloud Setup
-
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-config = ConfigManagerConfig(
-    # Secrets in AWS (primary)
-    secret_manager_type=ManagerType.AWS,
-    secret_config={"region": "us-east-1"},
-    
-    # Parameters in GCP (different cloud)
-    parameter_manager_type=ManagerType.KUBERNETES_CONFIGMAP,
-    parameter_config={
-        "namespace": "default",
-        "configmap_name": "app-config"
-    },
-    
-    # Fallbacks
-    secret_fallback_type=ManagerType.ENCRYPTED_FILE,
-    secret_fallback_config={
-        "file_path": "/etc/secrets/backup.json.enc",
-        "password": "backup-password"
-    },
-    
-    parameter_fallback_type=ManagerType.ENV_FILE,
-    parameter_fallback_config={
-        "file_path": "/etc/config/.env"
-    }
-)
-
-manager = await get_config_manager(config=config)
-```
-
-### Development vs Production
-
-```python
-import os
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-def get_environment_config():
-    if os.getenv("ENV") == "production":
-        return ConfigManagerConfig(
-            # Production: Cloud-native
-            secret_manager_type=ManagerType.AWS,
-            secret_config={"region": "us-east-1"},
-            parameter_manager_type=ManagerType.AWS_PARAMETER_STORE,
-            parameter_config={"region": "us-east-1"}
-        )
-    else:
-        # Development: File-based
-        return ConfigManagerConfig(
-            secret_manager_type=ManagerType.ENV_FILE,
-            secret_config={"file_path": ".env"},
-            parameter_manager_type=ManagerType.ENV_FILE,
-            parameter_config={"file_path": ".env"}
-        )
-
-config = get_environment_config()
-manager = await get_config_manager(config=config)
-```
-
-### Multi-Region High Availability
-
-```python
-config = ConfigManagerConfig(
-    # Primary region
-    secret_manager_type=ManagerType.AWS,
-    secret_config={"region": "us-east-1"},
-    parameter_manager_type=ManagerType.AWS_PARAMETER_STORE,
-    parameter_config={"region": "us-east-1"},
-    
-    # Secondary region fallback
-    secret_fallback_type=ManagerType.AWS,
-    secret_fallback_config={"region": "us-west-2"},
-    parameter_fallback_type=ManagerType.AWS_PARAMETER_STORE,
-    parameter_fallback_config={"region": "us-west-2"}
-)
-```
-
----
-
-## 🔍 Auto-Detection Logic
-
-AnySecret.io automatically detects your environment and configures appropriate providers:
-
-### Detection Priority
-
-1. **Environment Variables** - Explicit provider configuration
-2. **Cloud Metadata Services** - AWS IMDS, GCP metadata, Azure IMDS
-3. **Kubernetes Service Account** - Mounted tokens and config
-4. **Local Configuration Files** - kubeconfig, AWS config, gcloud config
-5. **File-based Fallback** - .env files, JSON/YAML configs
-
-### Environment Variable Override
+### Check Provider Health
 
 ```bash
-# Force specific providers
-export SECRET_MANAGER_TYPE=aws
-export PARAMETER_MANAGER_TYPE=aws_parameter_store
-export AWS_REGION=us-west-2
+# Test all providers
+anysecret providers health
 
-# Or use unified provider
-export CONFIG_MANAGER_TYPE=gcp
-export GCP_PROJECT_ID=my-project
+# Detailed status
+anysecret status
 
-# Disable auto-detection
-export ANYSECRET_DISABLE_AUTO_DETECTION=true
+# Debug connection issues
+ANYSECRET_DEBUG=true anysecret get test-key
 ```
-
----
-
-## 🚨 Troubleshooting
 
 ### Common Issues
 
-#### Provider Not Found
-```python
-# Check what was detected
-from anysecret import get_config_manager
+#### AWS Authentication
+```bash
+# Check AWS credentials
+aws sts get-caller-identity
 
-config = await get_config_manager()
-print(f"Provider: {config.provider_name}")
-print(f"Region: {config.region}")
+# Test specific profile
+aws sts get-caller-identity --profile production
+
+# Check regions
+aws ec2 describe-regions --output table
 ```
 
-#### Authentication Failures
+#### GCP Authentication  
+```bash
+# Check application default credentials
+gcloud auth application-default print-access-token
+
+# List active projects
+gcloud projects list
+
+# Check enabled APIs
+gcloud services list --enabled
+```
+
+#### Azure Authentication
+```bash
+# Check current account
+az account show
+
+# List subscriptions
+az account list
+
+# Test Key Vault access
+az keyvault secret list --vault-name my-vault
+```
+
+#### Kubernetes Access
+```bash
+# Check cluster connection
+kubectl cluster-info
+
+# Check permissions
+kubectl auth can-i create secrets --namespace anysecret
+kubectl auth can-i create configmaps --namespace anysecret
+```
+
+### Debug Mode
+
 ```bash
 # Enable debug logging
-export ANYSECRET_LOG_LEVEL=DEBUG
+export ANYSECRET_DEBUG=true
+anysecret providers health
 
-# Check provider-specific auth
-aws sts get-caller-identity  # AWS
-gcloud auth list            # GCP
-az account show            # Azure
-```
-
-#### Permission Errors
-```bash
-# Test permissions
-anysecret validate
-anysecret list --secrets-only
-anysecret list --parameters-only
-```
-
-### Debug Commands
-
-```bash
-# Check configuration
-anysecret info
-
-# List available secrets/parameters
-anysecret list
-
-# Test connectivity
-anysecret get test-key --default "test-value"
-
-# Validate permissions
-anysecret validate
+# Check provider-specific issues
+anysecret config validate
 ```
 
 ---
 
-## 📞 Support
+## 🚀 Multi-Provider Setup
 
-For provider-specific issues:
+### Hybrid Approach
 
-- **AWS**: [AWS Support](https://aws.amazon.com/support/)
-- **Google Cloud**: [GCP Support](https://cloud.google.com/support)
-- **Azure**: [Azure Support](https://azure.microsoft.com/support/)
-- **Kubernetes**: [Kubernetes Documentation](https://kubernetes.io/docs/)
-- **Vault**: [HashiCorp Support](https://support.hashicorp.com/)
+```bash
+# Development: Local files
+anysecret config profile-create dev
 
-For AnySecret.io issues:
-- **GitHub Issues**: [anysecret-io/anysecret-lib/issues](https://github.com/anysecret-io/anysecret-lib/issues)
-- **Discord**: [Join our community](https://discord.gg/anysecret)
-- **Email**: support@anysecret.io
+# Staging: Cloud with fallback
+anysecret config profile-create staging --provider gcp
+
+# Production: Multi-cloud redundancy
+anysecret config profile-create prod-primary --provider gcp
+anysecret config profile-create prod-backup --provider aws
+```
+
+### Cost Optimization
+
+```bash
+# Check provider costs
+anysecret list --format json | jq '
+  .summary | {
+    secrets_monthly: (.secrets * 0.40),
+    parameters_monthly: (.parameters * 0.01),
+    total_monthly: (.secrets * 0.40 + .parameters * 0.01)
+  }
+'
+
+# Compare with traditional approach
+echo "Traditional cost: $(anysecret list --format json | jq -r '(.summary.secrets + .summary.parameters) * 0.40')"
+```
 
 ---
 
-*This guide covers all major cloud providers and deployment scenarios. For advanced configurations and custom providers, see our [API Reference](api.md).*
+## 📚 Next Steps
+
+After setting up your providers:
+
+- **[Quick Start](quickstart.md)** - Start using AnySecret
+- **[Best Practices](best-practices.md)** - Production patterns  
+- **[Migration Guide](migration.md)** - Move between providers
+- **[CLI Reference](cli.md)** - Complete command documentation
+
+---
+
+*Provider setup is a one-time task. Once configured, AnySecret handles all the complexity for you.*

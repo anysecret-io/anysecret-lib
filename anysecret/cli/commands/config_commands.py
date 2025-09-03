@@ -11,6 +11,12 @@ from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
 import json
+import base64
+import os
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import getpass
 
 from ..core import print_not_implemented, handle_errors, async_command
 from ..core.config import get_config_manager
@@ -1066,6 +1072,143 @@ def show_profile(name: str):
         "anysecret config profile-show",
         f"Will show details for profile '{name}'"
     )
+
+
+@app.command(name="profile-export")
+@handle_errors
+def export_profile(
+    profile_name: Optional[str] = typer.Argument(None, help="Profile name to export (default: current profile)"),
+    base64_encode: bool = typer.Option(True, "--base64/--no-base64", help="Encode output as base64"),
+    encrypt: bool = typer.Option(False, "--encrypt", help="Encrypt the profile data"),
+    output_file: Optional[Path] = typer.Option(None, "--output", "-o", help="Write to file instead of stdout")
+):
+    """Export profile configuration for CI/CD use"""
+    config_mgr = get_config_manager()
+    
+    try:
+        # Get profile configuration
+        if profile_name is None:
+            profile_name = config_mgr.get_current_profile()
+            
+        profile_config = config_mgr.get_profile_config(profile_name)
+        
+        # Create exportable profile data
+        export_data = {
+            "version": "1.0",
+            "profile_name": profile_name,
+            "secret_manager": profile_config.secret_manager,
+            "parameter_manager": profile_config.parameter_manager,
+            "metadata": profile_config.metadata or {},
+            "exported_at": json.dumps({"timestamp": "now", "method": "cli"}),
+        }
+        
+        # Convert to JSON string
+        json_data = json.dumps(export_data, indent=2)
+        
+        # Handle encryption if requested
+        if encrypt:
+            console.print("[yellow]🔒 Encryption enabled - you will be prompted for a passphrase[/yellow]")
+            passphrase = getpass.getpass("Enter passphrase for encryption: ")
+            confirm_passphrase = getpass.getpass("Confirm passphrase: ")
+            
+            if passphrase != confirm_passphrase:
+                console.print("[red]❌ Passphrases don't match[/red]")
+                raise typer.Exit(1)
+                
+            if len(passphrase) < 8:
+                console.print("[red]❌ Passphrase must be at least 8 characters[/red]")
+                raise typer.Exit(1)
+            
+            # Encrypt the data
+            encrypted_data = _encrypt_data(json_data, passphrase)
+            output_data = encrypted_data
+            console.print("[green]✅ Profile data encrypted[/green]")
+        else:
+            output_data = json_data
+        
+        # Handle base64 encoding
+        if base64_encode:
+            encoded_data = base64.b64encode(output_data.encode('utf-8')).decode('utf-8')
+            output_data = encoded_data
+            console.print("[dim]✅ Profile data base64 encoded[/dim]")
+        
+        # Output the result
+        if output_file:
+            output_file.write_text(output_data)
+            console.print(f"[green]✅ Profile '{profile_name}' exported to {output_file}[/green]")
+        else:
+            console.print(f"\n[bold cyan]📤 Exported Profile: {profile_name}[/bold cyan]")
+            if encrypt:
+                console.print("[yellow]🔒 Encrypted with passphrase[/yellow]")
+            if base64_encode:
+                console.print("[dim]📝 Base64 encoded[/dim]")
+            console.print("\n[bold]Profile Data:[/bold]")
+            print(output_data)
+            
+        # Show usage instructions
+        console.print(f"\n[bold cyan]💡 Usage in CI/CD:[/bold cyan]")
+        if encrypt:
+            console.print("Set as environment variable and use with passphrase:")
+            console.print(f"[dim]export ANYSECRET_PROFILE_DATA='{output_data[:50]}...'[/dim]")
+            console.print("[dim]export ANYSECRET_PROFILE_PASSPHRASE='your_passphrase'[/dim]")
+            console.print("[cyan]anysecret --profile-data \"$ANYSECRET_PROFILE_DATA\" --decrypt list[/cyan]")
+        else:
+            console.print("Set as environment variable and use:")
+            console.print(f"[dim]export ANYSECRET_PROFILE_DATA='{output_data[:50]}...'[/dim]")
+            console.print("[cyan]anysecret --profile-data \"$ANYSECRET_PROFILE_DATA\" list[/cyan]")
+            
+    except Exception as e:
+        console.print(f"[red]❌ Export failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+def _encrypt_data(data: str, passphrase: str) -> str:
+    """Encrypt data using a passphrase"""
+    # Generate a key from the passphrase
+    salt = os.urandom(16)
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(passphrase.encode()))
+    
+    # Encrypt the data
+    fernet = Fernet(key)
+    encrypted = fernet.encrypt(data.encode())
+    
+    # Combine salt and encrypted data
+    combined = base64.b64encode(salt + encrypted).decode('utf-8')
+    return combined
+
+
+def _decrypt_data(encrypted_data: str, passphrase: str) -> str:
+    """Decrypt data using a passphrase"""
+    try:
+        # Decode the combined data
+        combined = base64.b64decode(encrypted_data.encode())
+        
+        # Split salt and encrypted data
+        salt = combined[:16]
+        encrypted = combined[16:]
+        
+        # Generate key from passphrase
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(passphrase.encode()))
+        
+        # Decrypt
+        fernet = Fernet(key)
+        decrypted = fernet.decrypt(encrypted)
+        return decrypted.decode()
+        
+    except Exception as e:
+        raise ValueError(f"Decryption failed: {e}")
 
 
 # Provider configuration

@@ -1,861 +1,289 @@
-# API Reference
+# AnySecret Python SDK API Reference
 
-Complete API documentation for AnySecret.io Python SDK.
+The Python SDK for AnySecret.io provides programmatic access to secret and parameter management.
 
-## 📚 Table of Contents
+**Note:** The primary interface is the CLI. The Python SDK is currently minimal - use the CLI for full functionality.
 
-- [Core API](#core-api)
-- [Configuration Management](#configuration-management)
-- [Provider Types](#provider-types)
-- [Exception Handling](#exception-handling)
-- [CLI Reference](#cli-reference)
-- [Type Hints](#type-hints)
+## Installation
 
-## 🚀 Core API
-
-### `get_config_manager()`
-
-The main entry point for AnySecret.io. Auto-detects environment and returns configured manager.
-
-```python
-from anysecret import get_config_manager
-
-async def main():
-    config = await get_config_manager()
-```
-
-**Parameters:**
-- `config: Optional[ConfigManagerConfig]` - Custom configuration (overrides auto-detection)
-- `classifier: Optional[SecretClassifier]` - Custom secret classification rules
-- `cache_ttl: int = 300` - Cache TTL in seconds (default: 5 minutes)
-
-**Returns:** `ConfigManagerInterface`
-
-**Example:**
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-# Auto-detection (recommended)
-config = await get_config_manager()
-
-# Custom configuration
-custom_config = ConfigManagerConfig(
-    secret_manager_type=ManagerType.AWS,
-    secret_config={"region": "us-west-2"}
-)
-config = await get_config_manager(config=custom_config)
-```
-
----
-
-## 🔧 ConfigManagerInterface
-
-The main interface for retrieving secrets and parameters.
-
-### `get(key: str, default: Any = None) -> Any`
-
-Universal getter - automatically classifies as secret or parameter.
-
-```python
-# Auto-classified retrieval
-db_password = await config.get("DATABASE_PASSWORD")  # → secret
-api_timeout = await config.get("API_TIMEOUT", default=30)  # → parameter
-```
-
-**Parameters:**
-- `key: str` - The secret/parameter key
-- `default: Any` - Default value if not found
-
-**Returns:** `Any` - The decrypted/decoded value
-
-**Raises:** 
-- `SecretNotFoundError` - If key not found and no default provided
-- `ProviderError` - If provider access fails
-
----
-
-### `get_secret(key: str, default: Any = None, force_secret: bool = False) -> Any`
-
-Explicitly retrieve from secure secret storage.
-
-```python
-# From secret storage (AWS Secrets Manager, GCP Secret Manager, etc.)
-api_key = await config.get_secret("STRIPE_SECRET_KEY")
-jwt_secret = await config.get_secret("JWT_SECRET")
-
-# Force secret classification
-public_token = await config.get_secret("PUBLIC_API_TOKEN", force_secret=True)
-```
-
-**Parameters:**
-- `key: str` - The secret key
-- `default: Any` - Default value if not found
-- `force_secret: bool` - Force storage in secret manager (override auto-classification)
-
-**Returns:** `Any` - The decrypted secret value
-
-**Security:** Values are never logged or cached in plaintext.
-
----
-
-### `get_parameter(key: str, default: Any = None, force_parameter: bool = False) -> Any`
-
-Explicitly retrieve from configuration parameter storage.
-
-```python
-# From parameter storage (AWS Parameter Store, GCP Config, etc.)
-db_host = await config.get_parameter("DATABASE_HOST")
-timeout = await config.get_parameter("API_TIMEOUT", default=30)
-feature_flag = await config.get_parameter("FEATURE_X_ENABLED", default=False)
-
-# Force parameter classification  
-pattern = await config.get_parameter("SECRET_PATTERN", force_parameter=True)
-```
-
-**Parameters:**
-- `key: str` - The parameter key
-- `default: Any` - Default value if not found
-- `force_parameter: bool` - Force storage in parameter store (override auto-classification)
-
-**Returns:** `Any` - The parameter value (with type coercion)
-
----
-
-### `get_secrets_by_prefix(prefix: str) -> Dict[str, Any]`
-
-Retrieve all secrets matching a prefix pattern.
-
-```python
-# Get all auth-related secrets
-auth_secrets = await config.get_secrets_by_prefix("auth/")
-# Returns: {
-#   "auth/jwt_secret": "abc123...",
-#   "auth/oauth_client_secret": "xyz789...",
-#   "auth/api_key": "sk_live_..."
-# }
-
-# Database secrets
-db_secrets = await config.get_secrets_by_prefix("database/")
-```
-
-**Parameters:**
-- `prefix: str` - Key prefix to match
-
-**Returns:** `Dict[str, Any]` - Dictionary of matching secrets
-
-**Use Cases:**
-- Service-specific secret loading
-- Batch secret retrieval
-- Environment-based grouping
-
----
-
-### `get_parameters_by_prefix(prefix: str) -> Dict[str, Any]`
-
-Retrieve all parameters matching a prefix pattern.
-
-```python
-# Get all app configuration
-app_config = await config.get_parameters_by_prefix("app/")
-# Returns: {
-#   "app/timeout": "30",
-#   "app/max_retries": "5", 
-#   "app/log_level": "info"
-# }
-
-# Feature flags
-features = await config.get_parameters_by_prefix("feature/")
-```
-
-**Parameters:**
-- `prefix: str` - Key prefix to match
-
-**Returns:** `Dict[str, Any]` - Dictionary of matching parameters
-
----
-
-### `get_by_prefix(prefix: str) -> Dict[str, Dict[str, Any]]`
-
-Retrieve both secrets and parameters by prefix, auto-classified.
-
-```python
-# Get everything for a service
-auth_config = await config.get_by_prefix("auth/")
-# Returns: {
-#   "secrets": {
-#     "auth/jwt_secret": "...",
-#     "auth/api_key": "..."
-#   },
-#   "parameters": {
-#     "auth/timeout": "30",
-#     "auth/max_attempts": "5"
-#   }
-# }
-```
-
-**Returns:** `Dict[str, Dict[str, Any]]` with keys `secrets` and `parameters`
-
----
-
-### `list_secrets() -> List[str]`
-
-List all available secret keys.
-
-```python
-secrets = await config.list_secrets()
-print(f"Available secrets: {secrets}")
-```
-
-**Returns:** `List[str]` - List of secret keys
-
----
-
-### `list_parameters() -> List[str]`
-
-List all available parameter keys.
-
-```python
-parameters = await config.list_parameters()
-print(f"Available parameters: {parameters}")
-```
-
-**Returns:** `List[str]` - List of parameter keys
-
----
-
-### Properties
-
-```python
-# Provider information
-print(f"Provider: {config.provider_name}")        # "aws", "gcp", "azure", etc.
-print(f"Region: {config.region}")                 # Current region/zone
-print(f"Environment: {config.environment}")       # "production", "staging", etc.
-
-# Configuration
-print(f"Cache TTL: {config.cache_ttl}")          # Cache timeout in seconds
-print(f"Fallback enabled: {config.has_fallback}") # Whether fallback is configured
-```
-
----
-
-## ⚙️ Configuration Management
-
-### `ConfigManagerConfig`
-
-Configuration object for customizing provider selection and settings.
-
-```python
-from anysecret import ConfigManagerConfig, ManagerType
-
-config = ConfigManagerConfig(
-    # Primary providers
-    secret_manager_type=ManagerType.GCP,
-    secret_config={
-        "project_id": "my-project",
-        "location": "us-central1"
-    },
-    
-    parameter_manager_type=ManagerType.GCP_CONFIG,
-    parameter_config={
-        "project_id": "my-project"
-    },
-    
-    # Fallback providers
-    secret_fallback_type=ManagerType.ENCRYPTED_FILE,
-    secret_fallback_config={
-        "file_path": "/etc/secrets/secrets.json.enc",
-        "password": "fallback-password"
-    },
-    
-    parameter_fallback_type=ManagerType.ENV_FILE,
-    parameter_fallback_config={
-        "file_path": "/etc/config/.env"
-    },
-    
-    # Global settings
-    cache_ttl=300,
-    environment="production",
-    region="us-central1"
-)
-
-manager = await get_config_manager(config=config)
-```
-
-**Parameters:**
-- `secret_manager_type: ManagerType` - Primary secret storage provider
-- `secret_config: Dict[str, Any]` - Provider-specific secret configuration
-- `parameter_manager_type: ManagerType` - Primary parameter storage provider  
-- `parameter_config: Dict[str, Any]` - Provider-specific parameter configuration
-- `secret_fallback_type: Optional[ManagerType]` - Fallback secret provider
-- `secret_fallback_config: Optional[Dict[str, Any]]` - Fallback secret config
-- `parameter_fallback_type: Optional[ManagerType]` - Fallback parameter provider
-- `parameter_fallback_config: Optional[Dict[str, Any]]` - Fallback parameter config
-- `cache_ttl: int` - Cache timeout in seconds (default: 300)
-- `environment: Optional[str]` - Environment name for key prefixing
-- `region: Optional[str]` - Cloud region/zone
-
----
-
-### `ManagerType` Enum
-
-Available provider types:
-
-```python
-from anysecret import ManagerType
-
-# Cloud Providers
-ManagerType.AWS                    # AWS Secrets Manager
-ManagerType.AWS_PARAMETER_STORE    # AWS Systems Manager Parameter Store
-ManagerType.GCP                    # Google Secret Manager
-ManagerType.GCP_CONFIG             # Google Config Connector
-ManagerType.AZURE                  # Azure Key Vault
-ManagerType.AZURE_APP_CONFIG       # Azure App Configuration
-
-# Container Platforms
-ManagerType.KUBERNETES             # Kubernetes Secrets
-ManagerType.KUBERNETES_CONFIGMAP   # Kubernetes ConfigMaps
-
-# On-Premises
-ManagerType.VAULT                  # HashiCorp Vault
-ManagerType.ENCRYPTED_FILE         # AES-256 encrypted JSON/YAML
-ManagerType.ENV_FILE               # Environment files (.env)
-ManagerType.JSON_FILE              # Plain JSON files
-ManagerType.YAML_FILE              # Plain YAML files
-```
-
----
-
-### Provider-Specific Configuration
-
-#### AWS Configuration
-```python
-# AWS Secrets Manager
-secret_config = {
-    "region": "us-east-1",
-    "profile": "production",  # Optional AWS profile
-    "endpoint_url": "https://secretsmanager.us-east-1.amazonaws.com"  # Optional
-}
-
-# AWS Parameter Store
-parameter_config = {
-    "region": "us-east-1", 
-    "path_prefix": "/myapp/",  # Optional path prefix
-    "decrypt": True  # Decrypt SecureString parameters
-}
-```
-
-#### Google Cloud Configuration
-```python
-# Google Secret Manager
-secret_config = {
-    "project_id": "my-project",
-    "location": "us-central1",  # Optional for regional secrets
-    "credentials_path": "/path/to/service-account.json"  # Optional
-}
-
-# Google Config Connector
-parameter_config = {
-    "project_id": "my-project",
-    "namespace": "default"  # Kubernetes namespace if using Config Connector
-}
-```
-
-#### Azure Configuration
-```python
-# Azure Key Vault
-secret_config = {
-    "vault_name": "my-keyvault",
-    "tenant_id": "your-tenant-id",
-    "client_id": "your-client-id",  # For service principal auth
-    "client_secret": "your-client-secret"  # For service principal auth
-}
-
-# Azure App Configuration
-parameter_config = {
-    "connection_string": "Endpoint=https://...",
-    "label": "Production",  # Configuration label
-    "key_filter": "myapp:*"  # Optional key filter
-}
-```
-
-#### Kubernetes Configuration
-```python
-# Kubernetes Secrets
-secret_config = {
-    "namespace": "default",
-    "secret_name": "app-secrets",  # Optional: specific secret name
-    "kubeconfig_path": "~/.kube/config"  # Optional: custom kubeconfig
-}
-
-# Kubernetes ConfigMaps
-parameter_config = {
-    "namespace": "default",
-    "configmap_name": "app-config",  # Optional: specific configmap name
-}
-```
-
----
-
-## 🎭 Secret Classification
-
-### `SecretClassifier`
-
-Customize how AnySecret.io classifies secrets vs parameters.
-
-```python
-from anysecret import SecretClassifier, get_config_manager
-
-# Create custom classifier
-classifier = SecretClassifier()
-
-# Add custom secret patterns
-classifier.add_secret_patterns([
-    "CUSTOM_*_PRIVATE",
-    "INTERNAL_*_KEY", 
-    "*_CREDENTIAL",
-    "OAUTH_*"
-])
-
-# Add custom parameter patterns  
-classifier.add_parameter_patterns([
-    "CUSTOM_*_CONFIG",
-    "INTERNAL_*_SETTING",
-    "*_TIMEOUT_MS",
-    "FEATURE_*_ENABLED"
-])
-
-# Remove default patterns (advanced)
-classifier.remove_secret_pattern("*_PASSWORD")  # Don't auto-classify passwords
-classifier.remove_parameter_pattern("*_HOST")   # Don't auto-classify hosts
-
-# Use custom classifier
-config = await get_config_manager(classifier=classifier)
-```
-
-**Methods:**
-- `add_secret_patterns(patterns: List[str])` - Add patterns for secret classification
-- `add_parameter_patterns(patterns: List[str])` - Add patterns for parameter classification
-- `remove_secret_pattern(pattern: str)` - Remove default secret pattern
-- `remove_parameter_pattern(pattern: str)` - Remove default parameter pattern
-- `is_secret(key: str, value: str = None) -> bool` - Check if key/value is classified as secret
-
-**Default Secret Patterns:**
-```python
-# Name-based patterns
-"*_SECRET", "*_PASSWORD", "*_KEY", "*_TOKEN", "*_CREDENTIAL", "*_PRIVATE"
-"JWT_*", "OAUTH_*", "API_KEY*", "CLIENT_SECRET*", "PRIVATE_KEY*"
-
-# Value-based patterns (for values starting with)
-"sk_", "-----BEGIN", "AIza", "AKIA", "ghp_", "glpat-"
-```
-
-**Default Parameter Patterns:**
-```python
-# Name-based patterns
-"*_HOST", "*_PORT", "*_URL", "*_TIMEOUT", "*_LIMIT", "*_COUNT"
-"*_ENABLED", "*_FLAG", "*_SIZE", "LOG_*", "DEBUG_*", "MAX_*"
-```
-
----
-
-## ❗ Exception Handling
-
-### Exception Hierarchy
-
-```python
-from anysecret import (
-    AnySecretError,         # Base exception
-    SecretNotFoundError,    # Secret/parameter not found
-    ProviderError,          # Provider-specific error
-    ConfigurationError,     # Configuration/setup error
-    AuthenticationError,    # Authentication failed
-    PermissionError,        # Insufficient permissions
-    NetworkError           # Network/connectivity error
-)
-
-try:
-    secret = await config.get_secret("API_KEY")
-except SecretNotFoundError:
-    print("API_KEY not found")
-except PermissionError:
-    print("Access denied to secret manager")
-except ProviderError as e:
-    print(f"Provider error: {e}")
-except AnySecretError as e:
-    print(f"AnySecret error: {e}")
-```
-
-### Exception Details
-
-#### `SecretNotFoundError`
-Raised when a secret or parameter is not found and no default is provided.
-
-```python
-try:
-    api_key = await config.get_secret("MISSING_KEY")
-except SecretNotFoundError as e:
-    print(f"Key not found: {e.key}")
-    print(f"Provider: {e.provider}")
-    print(f"Searched in: {e.locations}")
-```
-
-#### `ProviderError`
-Raised for provider-specific errors (network issues, API limits, etc.).
-
-```python
-try:
-    secret = await config.get_secret("API_KEY")
-except ProviderError as e:
-    print(f"Provider: {e.provider}")
-    print(f"Error code: {e.error_code}")
-    print(f"Message: {e.message}")
-    print(f"Retryable: {e.retryable}")
-```
-
-#### `AuthenticationError`
-Raised when authentication fails with the cloud provider.
-
-```python
-try:
-    config = await get_config_manager()
-except AuthenticationError as e:
-    print(f"Auth failed for {e.provider}")
-    print(f"Reason: {e.reason}")
-    print("Check your credentials/permissions")
-```
-
----
-
-## 🖥️ CLI Reference
-
-### Installation
 ```bash
 pip install anysecret-io
 ```
 
-### Basic Commands
+## Current API (What Actually Exists)
 
-#### `anysecret get`
-Retrieve a single secret or parameter.
+### Basic Usage
 
-```bash
-# Get secret (auto-classified)
-anysecret get DATABASE_PASSWORD
+```python
+from anysecret import get_secret_manager, SecretManagerType
 
-# Get with default value
-anysecret get API_TIMEOUT --default 30
-
-# Force secret retrieval
-anysecret get PUBLIC_TOKEN --secret
-
-# Force parameter retrieval  
-anysecret get SECRET_PATTERN --parameter
-
-# JSON output
-anysecret get DATABASE_CONFIG --format json
-
-# Base64 encoded (for Kubernetes)
-anysecret get API_KEY --format base64
+# Get a secret manager instance
+async def main():
+    secret_manager = await get_secret_manager()
+    
+    # Basic operations
+    secret = await secret_manager.get_secret("API_KEY")
+    await secret_manager.create_secret("NEW_KEY", "value")
+    await secret_manager.update_secret("API_KEY", "new_value")
+    await secret_manager.delete_secret("OLD_KEY")
+    secrets = await secret_manager.list_secrets()
 ```
 
-**Options:**
-- `--default VALUE` - Default value if not found
-- `--secret` - Force secret storage lookup
-- `--parameter` - Force parameter storage lookup  
-- `--format FORMAT` - Output format: `text`, `json`, `yaml`, `base64`, `shell`
+### Available Exports
 
-#### `anysecret get-prefix`
-Retrieve all secrets/parameters with a prefix.
-
-```bash
-# Get all with prefix
-anysecret get-prefix "database/"
-
-# JSON output  
-anysecret get-prefix "auth/" --format json
-
-# Only secrets
-anysecret get-prefix "app/" --secrets-only
-
-# Only parameters
-anysecret get-prefix "app/" --parameters-only
+```python
+from anysecret import (
+    get_secret_manager,        # Factory function for secret managers
+    SecretManagerType,         # Enum of provider types
+    SecretManagerFactory       # Factory class for creating managers
+)
 ```
 
-#### `anysecret list`
-List available secrets and parameters.
+### SecretManagerType Enum
+
+```python
+from anysecret import SecretManagerType
+
+# Available types
+SecretManagerType.AWS           # AWS Secrets Manager
+SecretManagerType.GCP           # GCP Secret Manager  
+SecretManagerType.AZURE         # Azure Key Vault
+SecretManagerType.KUBERNETES    # Kubernetes Secrets
+SecretManagerType.VAULT         # HashiCorp Vault
+SecretManagerType.FILE          # Local file storage
+```
+
+### Direct Provider Usage
+
+For advanced use cases, you can directly instantiate providers:
+
+```python
+# AWS Secrets Manager
+from anysecret.providers.aws import AwsSecretManager
+
+secret_manager = AwsSecretManager(region="us-east-1")
+await secret_manager.create_secret("key", "value")
+
+# GCP Secret Manager
+from anysecret.providers.gcp import GcpSecretManager
+
+secret_manager = GcpSecretManager(project_id="my-project")
+await secret_manager.get_secret("key")
+
+# Local File Storage
+from anysecret.providers.file import EnvFileSecretManager
+
+secret_manager = EnvFileSecretManager(file_path=".env")
+await secret_manager.list_secrets()
+```
+
+### Parameter Manager Usage
+
+```python
+# Parameter managers are available but not exposed in main API
+from anysecret.config import get_parameter_manager
+
+param_manager = await get_parameter_manager()
+value = await param_manager.get_parameter("CONFIG_VALUE")
+await param_manager.create_parameter("NEW_CONFIG", "value")
+```
+
+## CLI Is Primary Interface
+
+For most use cases, **use the CLI instead of the Python SDK**:
 
 ```bash
-# List everything
+# The CLI provides full functionality
+anysecret get API_KEY
+anysecret set DATABASE_URL "postgresql://..."
 anysecret list
-
-# Only secrets
-anysecret list --secrets-only
-
-# Only parameters
-anysecret list --parameters-only
-
-# With values (be careful!)
-anysecret list --show-values
-
-# Filter by prefix
-anysecret list --prefix "app/"
+anysecret bulk import .env
+anysecret bulk export --output production.env
 ```
 
-#### `anysecret info`
-Show configuration and provider information.
+See [CLI Reference](cli.md) for complete documentation.
 
-```bash
-anysecret info
-# Output:
-# Provider: aws
-# Region: us-east-1  
-# Environment: production
-# Cache TTL: 300 seconds
-# Fallback: enabled (encrypted-file)
+## ConfigManager (Available but Not Exported)
+
+The `ConfigManager` class provides unified configuration management with automatic classification. While not exported in the main package, it can be imported directly:
+
+```python
+from anysecret.config_manager import ConfigManager
+from anysecret.config import get_config_manager
+
+# Get configured instance (with auto-detection)
+config = await get_config_manager()
+
+# Or create directly
+config = ConfigManager(
+    secret_config={"type": "gcp", "project_id": "my-project"},
+    parameter_config={"type": "gcs", "bucket": "my-bucket"}
+)
+
+# Unified interface with auto-classification
+value = await config.get("DATABASE_PASSWORD")  # Auto-routes to secrets
+value = await config.get("API_TIMEOUT")       # Auto-routes to parameters
+
+# Override classification
+value = await config.get("PUBLIC_KEY", hint="secret")  # Force as secret
+
+# Prefix-based operations
+all_config = await config.get_config_by_prefix("app/")
+all_keys = await config.list_all_keys(prefix="service/")
+
+# CRUD operations
+await config.set("NEW_KEY", "value")          # Auto-classified
+await config.delete("OLD_KEY")
 ```
 
-### Advanced Commands
+### ConfigManager Features
 
-#### `anysecret classify`
-Test secret classification.
+- **Automatic Classification**: Uses pattern matching to route between secrets and parameters
+- **Unified Interface**: Single `get()`, `set()`, `delete()` methods
+- **Prefix Operations**: Retrieve all values with a given prefix
+- **Custom Patterns**: Add your own classification patterns
+- **Metadata Support**: Get/set with metadata
 
-```bash
-anysecret classify DATABASE_PASSWORD
-# Output: secret (matches pattern: *_PASSWORD)
+## Provider Base Classes
 
-anysecret classify API_TIMEOUT  
-# Output: parameter (matches pattern: *_TIMEOUT)
+If implementing custom providers:
 
-anysecret classify CUSTOM_VALUE --value "sk_live_abc123"
-# Output: secret (value starts with: sk_)
+```python
+from anysecret.base_secret_manager import BaseSecretManager
+from anysecret.base_parameter_manager import BaseParameterManager
+
+class CustomSecretManager(BaseSecretManager):
+    async def create_secret(self, key: str, value: str) -> None:
+        # Implementation
+        pass
+    
+    async def get_secret(self, key: str) -> str:
+        # Implementation
+        pass
+    
+    async def update_secret(self, key: str, value: str) -> None:
+        # Implementation
+        pass
+    
+    async def delete_secret(self, key: str) -> None:
+        # Implementation
+        pass
+    
+    async def list_secrets(self) -> List[str]:
+        # Implementation
+        pass
 ```
 
-#### `anysecret validate`
-Validate configuration and connectivity.
+## Environment Variables
 
-```bash
-anysecret validate
-# Output:
-# ✅ Provider: aws (connected)
-# ✅ Secret Manager: accessible  
-# ✅ Parameter Store: accessible
-# ✅ Fallback: configured
-# ✅ Permissions: sufficient
-```
-
-#### `anysecret encrypt`
-Encrypt files for secure storage.
-
-```bash
-# Encrypt .env file
-anysecret encrypt secrets.env secrets.json.enc --password mypassword
-
-# Encrypt JSON config
-anysecret encrypt config.json config.json.enc --password-file password.txt
-```
-
-#### `anysecret sync-k8s`
-Sync secrets to Kubernetes.
-
-```bash
-# Sync all secrets to K8s
-anysecret sync-k8s --namespace production
-
-# Sync specific prefix
-anysecret sync-k8s --prefix "app/" --secret-name app-secrets
-
-# Dry run
-anysecret sync-k8s --dry-run
-```
-
-### Environment Variables
-
-Configure CLI behavior:
+Configure the SDK behavior:
 
 ```bash
 # Provider selection
-export SECRET_MANAGER_TYPE=aws
-export PARAMETER_MANAGER_TYPE=aws_parameter_store
+export SECRET_MANAGER_TYPE=gcp
+export PARAMETER_MANAGER_TYPE=gcs
 
-# AWS specific
-export AWS_REGION=us-west-2
-export AWS_PROFILE=production
-
-# GCP specific  
+# GCP
 export GCP_PROJECT_ID=my-project
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/creds.json
 
-# Azure specific
-export AZURE_KEY_VAULT_NAME=my-vault
-export AZURE_TENANT_ID=tenant-id
+# AWS
+export AWS_REGION=us-east-1
+export AWS_PROFILE=production
 
-# Global settings
-export ANYSECRET_CACHE_TTL=600
-export ANYSECRET_ENVIRONMENT=production
+# Azure
+export AZURE_KEY_VAULT_NAME=my-vault
 ```
 
----
-
-## 📝 Type Hints
-
-AnySecret.io provides full type hint support:
+## Exceptions
 
 ```python
-from typing import Dict, Any, Optional, List
-from anysecret import (
-    ConfigManagerInterface,
-    ConfigManagerConfig, 
-    ManagerType,
-    SecretClassifier
+from anysecret.exceptions import (
+    SecretManagerError,      # Base exception
+    SecretNotFoundError,     # Secret doesn't exist
+    SecretAlreadyExistsError # Secret already exists
 )
 
-# Function annotations
-async def get_db_config(
-    config: ConfigManagerInterface
-) -> Dict[str, str]:
-    password = await config.get_secret("DB_PASSWORD")
-    host = await config.get_parameter("DB_HOST", default="localhost")
-    return {"password": password, "host": host}
-
-# Custom configuration with type hints
-def create_config() -> ConfigManagerConfig:
-    return ConfigManagerConfig(
-        secret_manager_type=ManagerType.AWS,
-        secret_config={"region": "us-east-1"},
-        cache_ttl=300
-    )
-
-# Type-safe secret retrieval
-async def typed_secrets(config: ConfigManagerInterface) -> None:
-    # These will be properly typed by your IDE
-    api_key: str = await config.get_secret("API_KEY")
-    timeout: int = await config.get_parameter("TIMEOUT", default=30)
-    enabled: bool = await config.get_parameter("ENABLED", default=False)
+try:
+    secret = await secret_manager.get_secret("MISSING")
+except SecretNotFoundError:
+    print("Secret not found")
 ```
 
-### Protocol Definition
+## Examples
 
-```python
-from typing import Protocol, Dict, Any, List, Optional
-
-class ConfigManagerInterface(Protocol):
-    """Type protocol for config manager interface."""
-    
-    @property
-    def provider_name(self) -> str: ...
-    
-    @property  
-    def region(self) -> Optional[str]: ...
-    
-    async def get(self, key: str, default: Any = None) -> Any: ...
-    
-    async def get_secret(
-        self, 
-        key: str, 
-        default: Any = None,
-        force_secret: bool = False
-    ) -> Any: ...
-    
-    async def get_parameter(
-        self,
-        key: str,
-        default: Any = None, 
-        force_parameter: bool = False
-    ) -> Any: ...
-    
-    async def get_secrets_by_prefix(self, prefix: str) -> Dict[str, Any]: ...
-    
-    async def get_parameters_by_prefix(self, prefix: str) -> Dict[str, Any]: ...
-    
-    async def list_secrets(self) -> List[str]: ...
-    
-    async def list_parameters(self) -> List[str]: ...
-```
-
----
-
-## 🔍 Advanced Usage Examples
-
-### Custom Provider Configuration
-
-```python
-from anysecret import get_config_manager, ConfigManagerConfig, ManagerType
-
-async def multi_region_setup():
-    """Configure multi-region fallback."""
-    config = ConfigManagerConfig(
-        # Primary: us-east-1
-        secret_manager_type=ManagerType.AWS,
-        secret_config={
-            "region": "us-east-1",
-            "endpoint_url": "https://secretsmanager.us-east-1.amazonaws.com"
-        },
-        
-        # Fallback: us-west-2  
-        secret_fallback_type=ManagerType.AWS,
-        secret_fallback_config={
-            "region": "us-west-2"
-        }
-    )
-    
-    manager = await get_config_manager(config=config)
-    return manager
-```
-
-### Custom Retry Logic
+### Basic Secret Management
 
 ```python
 import asyncio
-from anysecret import get_config_manager, ProviderError
+from anysecret import get_secret_manager
 
-async def robust_secret_retrieval(key: str, max_retries: int = 3):
-    """Retrieve secret with custom retry logic."""
-    config = await get_config_manager()
+async def manage_secrets():
+    # Auto-detect provider based on environment
+    mgr = await get_secret_manager()
     
-    for attempt in range(max_retries):
-        try:
-            return await config.get_secret(key)
-        except ProviderError as e:
-            if not e.retryable or attempt == max_retries - 1:
-                raise
-            
-            # Exponential backoff
-            delay = 2 ** attempt
-            await asyncio.sleep(delay)
+    # CRUD operations
+    await mgr.create_secret("API_KEY", "sk_live_123")
+    value = await mgr.get_secret("API_KEY")
+    await mgr.update_secret("API_KEY", "sk_live_456")
+    await mgr.delete_secret("OLD_KEY")
     
-    raise Exception("Max retries exceeded")
+    # List all
+    all_secrets = await mgr.list_secrets()
+    for key in all_secrets:
+        print(f"Secret: {key}")
+
+asyncio.run(manage_secrets())
 ```
 
-### Batch Operations
+### Using with FastAPI
 
 ```python
-async def load_service_config(service_name: str):
-    """Load all configuration for a service."""
-    config = await get_config_manager()
-    
-    # Load secrets and parameters in parallel
-    secrets_task = config.get_secrets_by_prefix(f"{service_name}/")
-    params_task = config.get_parameters_by_prefix(f"{service_name}/")
-    
-    secrets, parameters = await asyncio.gather(secrets_task, params_task)
-    
-    return {
-        "service": service_name,
-        "secrets": secrets,
-        "parameters": parameters,
-        "loaded_at": datetime.utcnow().isoformat()
-    }
+from fastapi import FastAPI, Depends
+from anysecret import get_secret_manager
+
+app = FastAPI()
+
+async def get_db_password():
+    mgr = await get_secret_manager()
+    return await mgr.get_secret("DB_PASSWORD")
+
+@app.get("/")
+async def root(password: str = Depends(get_db_password)):
+    # Use password
+    return {"status": "connected"}
 ```
 
+## What's Available vs What's Exported
+
+### Currently Exported (in `__init__.py`):
+- ✅ `get_secret_manager()` - Basic secret manager factory
+- ✅ `SecretManagerType` - Provider type enum
+- ✅ `SecretManagerFactory` - Factory for creating managers
+
+### Available but Not Exported:
+- ✅ `ConfigManager` - Full unified interface with auto-classification
+- ✅ `get_config_manager()` - Auto-configured manager with detection
+- ✅ `get_parameter_manager()` - Parameter manager factory
+- ✅ Classification system with pattern matching
+- ✅ Prefix-based retrieval methods
+
+### Not Yet Implemented:
+- ❌ Caching layer (config exists but not implemented)
+- ❌ Fallback providers (config exists but not implemented)
+- ❌ Retry logic and circuit breakers
+
+**Note:** The full `ConfigManager` functionality exists and is used by the CLI but isn't exported in the main package. You can still import it directly if needed.
+
+## Future SDK Enhancements
+
+We're considering adding:
+- Unified `ConfigManager` with auto-classification
+- Async context managers for connection pooling
+- Built-in retry logic and circuit breakers
+- Streaming APIs for large secrets
+- Batch operations
+
 ---
 
-## 📞 Support
-
-- **Documentation**: [anysecret.io/docs](https://anysecret.io/docs)
-- **GitHub Issues**: [anysecret-io/anysecret-lib/issues](https://github.com/anysecret-io/anysecret-lib/issues)  
-- **Discord**: [Join our community](https://discord.gg/anysecret)
-- **Email**: support@anysecret.io
-
----
-
-*This API reference covers AnySecret.io v1.0+. For older versions, see the [changelog](https://github.com/anysecret-io/anysecret-lib/releases).*
+**Note:** This documentation reflects the actual current implementation. For the full-featured configuration management experience, use the [AnySecret CLI](cli.md).

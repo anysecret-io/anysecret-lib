@@ -1,352 +1,307 @@
 # Quick Start Guide
 
-Get AnySecret.io running in under 5 minutes. This guide walks you through installation, basic setup, and your first secret retrieval.
+Get up and running with AnySecret CLI in 5 minutes. From zero to managing secrets in the cloud with intelligent cost optimization.
 
 ## 🎯 Prerequisites
 
 - Python 3.8+ 
-- Access to at least one cloud provider (AWS, GCP, Azure) or local development environment
-- Basic familiarity with async/await in Python
+- Command line / terminal access
+- (Optional) Cloud provider account for production use
 
 ## 📦 Installation
 
-### Basic Installation
-
 ```bash
-# Install the core library
 pip install anysecret-io
 ```
 
-### Provider-Specific Installation
+That's it! The CLI is ready to use.
 
-Choose the providers you need:
+## ⚡ 5-Minute Quickstart
 
-```bash
-# AWS (Secrets Manager + Parameter Store)
-pip install anysecret-io[aws]
-
-# Google Cloud (Secret Manager + Config)
-pip install anysecret-io[gcp]
-
-# Microsoft Azure (Key Vault + App Config)
-pip install anysecret-io[azure]
-
-# Kubernetes (Secrets + ConfigMaps)
-pip install anysecret-io[k8s]
-
-# HashiCorp Vault
-pip install anysecret-io[vault]
-
-# Everything (recommended for production)
-pip install anysecret-io[all]
-```
-
-## ⚡ 5-Minute Setup
-
-### Option 1: File-Based (Development)
-
-Perfect for local development and testing:
+### Step 1: Create Your First Profile
 
 ```bash
-# Create a .env file
-cat > .env << 'EOF'
-DATABASE_PASSWORD=mysecret123
-DATABASE_HOST=localhost
-API_TIMEOUT=30
-STRIPE_SECRET_KEY=sk_test_abc123
-REDIS_URL=redis://localhost:6379
-EOF
+# Start with local development
+anysecret config profile-create my-first-profile
+
+# Check it was created
+anysecret config profile-list
+# Output: my-first-profile (active)
 ```
 
-```python
-import asyncio
-from anysecret import get_config_manager
-
-async def main():
-    # Auto-detects .env file
-    config = await get_config_manager()
-    
-    # Get secrets (secure values)
-    db_password = await config.get_secret("DATABASE_PASSWORD")
-    stripe_key = await config.get_secret("STRIPE_SECRET_KEY")
-    
-    # Get parameters (config values)
-    db_host = await config.get_parameter("DATABASE_HOST")
-    timeout = await config.get_parameter("API_TIMEOUT", default=30)
-    
-    print(f"DB Host: {db_host}")
-    print(f"Timeout: {timeout}")
-    print("Secrets loaded successfully! 🎉")
-
-asyncio.run(main())
-```
-
-### Option 2: Cloud-Native (AWS)
-
-For AWS environments:
-
-```python
-import asyncio
-from anysecret import get_config_manager
-import os
-
-async def main():
-    # Set environment variables
-    os.environ['SECRET_MANAGER_TYPE'] = 'aws'
-    os.environ['AWS_REGION'] = 'us-east-1'
-    
-    # Auto-configures for AWS
-    config = await get_config_manager()
-    
-    # Gets from AWS Secrets Manager
-    db_password = await config.get_secret("prod/database/password")
-    
-    # Gets from AWS Parameter Store  
-    db_host = await config.get_parameter("prod/database/host")
-    
-    print("AWS secrets loaded! ✅")
-
-asyncio.run(main())
-```
-
-### Option 3: Auto-Detection (Recommended)
-
-Let AnySecret.io detect your environment:
-
-```python
-import asyncio
-from anysecret import get_config_manager
-
-async def main():
-    # Detects: AWS, GCP, Azure, K8s, or falls back to files
-    config = await get_config_manager()
-    
-    # Works the same everywhere!
-    api_key = await config.get("API_KEY")
-    timeout = await config.get("TIMEOUT", default=30)
-    
-    print(f"Running in: {config.provider_name}")
-    print("Configuration loaded! 🚀")
-
-asyncio.run(main())
-```
-
-## 🔧 CLI Quick Start
-
-AnySecret.io includes powerful CLI tools for DevOps workflows:
-
-### Basic CLI Usage
+### Step 2: Add Some Configuration
 
 ```bash
-# Get a secret
-anysecret get DATABASE_PASSWORD
+# Add secrets and parameters - auto-classification handles routing
+anysecret set DATABASE_PASSWORD "super_secure_password"  # Auto: Secret
+anysecret set DATABASE_HOST "localhost"                   # Auto: Parameter
+anysecret set API_TIMEOUT "30"                           # Auto: Parameter
+anysecret set STRIPE_SECRET_KEY "sk_test_abc123"         # Auto: Secret
+anysecret set LOG_LEVEL "debug"                          # Auto: Parameter
 
-# Get with default value
-anysecret get API_TIMEOUT --default 30
-
-# List all available secrets/parameters
+# See what you've got
 anysecret list
-
-# Get multiple by prefix
-anysecret get-prefix "database/"
-
-# Export for shell
-export DB_PASS=$(anysecret get DATABASE_PASSWORD)
+# Output:
+# DATABASE_PASSWORD (secret) ***
+# DATABASE_HOST (parameter) localhost  
+# API_TIMEOUT (parameter) 30
+# STRIPE_SECRET_KEY (secret) ***
+# LOG_LEVEL (parameter) debug
 ```
 
-### DevOps Integration
+### Step 3: Use Your Configuration
 
 ```bash
-# For Docker
-docker run -e DB_PASS=$(anysecret get db/password) myapp
+# Get individual values
+anysecret get DATABASE_HOST
+# Output: localhost
 
-# For Kubernetes
-anysecret get database/password | base64 | kubectl create secret generic db-secret --from-literal=password=-
+anysecret get DATABASE_PASSWORD
+# Output: *** (secrets are masked in terminal)
 
-# For Terraform (JSON output)
-anysecret get-all --format json > secrets.json
-
-# For CI/CD pipelines
-anysecret get api/key --format shell >> $GITHUB_ENV
+# Export everything to a file for your app
+anysecret bulk export --output .env
+cat .env
+# DATABASE_PASSWORD=super_secure_password
+# DATABASE_HOST=localhost
+# API_TIMEOUT=30
+# STRIPE_SECRET_KEY=sk_test_abc123
+# LOG_LEVEL=debug
 ```
 
-## 🎭 Environment Detection
+### Step 4: Import from Existing .env File
 
-AnySecret.io automatically detects your environment:
-
-| Environment | Auto-Detected | Configuration |
-|-------------|---------------|---------------|
-| **AWS EC2/ECS/Lambda** | ✅ | Uses IAM roles, detects region |
-| **Google Cloud Run/GKE** | ✅ | Uses service accounts, detects project |
-| **Azure App Service** | ✅ | Uses managed identity |
-| **Kubernetes** | ✅ | Uses service accounts, detects namespace |
-| **Local Development** | ✅ | Scans for .env files |
-| **Docker** | ✅ | Checks for environment variables |
-
-## 🔐 Smart Secret Classification
-
-AnySecret.io automatically determines if values are secrets or parameters:
-
-```python
-# These are automatically classified as SECRETS:
-DATABASE_PASSWORD=secret123     # → Secure storage
-API_KEY=sk_live_abc123         # → Secure storage  
-JWT_SECRET=mysecret            # → Secure storage
-STRIPE_SECRET_KEY=sk_test_xyz  # → Secure storage
-
-# These are automatically classified as PARAMETERS:
-DATABASE_HOST=localhost        # → Config storage
-API_TIMEOUT=30                # → Config storage
-LOG_LEVEL=info                # → Config storage
-FEATURE_FLAG_ENABLED=true     # → Config storage
-```
-
-Override when needed:
-
-```python
-# Force secret storage
-public_token = await config.get_secret("PUBLIC_API_TOKEN", force_secret=True)
-
-# Force parameter storage
-pattern = await config.get_parameter("SECRET_PATTERN", force_parameter=True)
-```
-
-## 🏗️ Common Patterns
-
-### FastAPI Integration
-
-```python
-from fastapi import FastAPI, Depends
-from anysecret import get_config_manager, ConfigManagerInterface
-
-app = FastAPI()
-
-async def get_config() -> ConfigManagerInterface:
-    return await get_config_manager()
-
-@app.startup_event
-async def startup():
-    # Pre-load configuration
-    config = await get_config_manager()
-    app.state.config = config
-
-@app.get("/health")
-async def health(config: ConfigManagerInterface = Depends(get_config)):
-    db_host = await config.get_parameter("DATABASE_HOST")
-    return {"status": "healthy", "db_host": db_host}
-```
-
-### Django Settings
-
-```python
-# settings.py
-import asyncio
-from anysecret import get_config_manager
-
-# Load configuration at startup
-config = asyncio.run(get_config_manager())
-
-# Use in Django settings
-SECRET_KEY = asyncio.run(config.get_secret("DJANGO_SECRET_KEY"))
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'HOST': asyncio.run(config.get_parameter("DB_HOST")),
-        'PASSWORD': asyncio.run(config.get_secret("DB_PASSWORD")),
-    }
-}
-```
-
-### Error Handling
-
-```python
-from anysecret import get_config_manager, SecretNotFoundError
-
-async def robust_config():
-    config = await get_config_manager()
-    
-    try:
-        # Try to get required secret
-        api_key = await config.get_secret("API_KEY")
-    except SecretNotFoundError:
-        # Handle missing secret gracefully
-        print("API_KEY not found, using development mode")
-        api_key = "dev-key"
-    
-    # Use default for optional parameters
-    timeout = await config.get_parameter("TIMEOUT", default=30)
-    return api_key, timeout
-```
-
-## 🚀 Next Steps
-
-Now that you have AnySecret.io working:
-
-1. **[Provider Setup](providers.md)** - Configure your cloud providers
-2. **[Best Practices](best-practices.md)** - Security and performance tips  
-3. **[API Reference](api.md)** - Complete API documentation
-4. **[Migration Guide](migration.md)** - Switch between providers
-5. **[Examples](https://github.com/anysecret-io/examples)** - Real-world use cases
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-**Problem**: `ImportError: No module named 'anysecret'`
 ```bash
-# Solution: Install the package
-pip install anysecret-io
+# If you already have a .env file
+anysecret bulk import .env
+
+# Or import with preview first
+anysecret bulk import .env --dry-run
+
+# Check classification results
+anysecret list --format json | jq '.summary'
+# Output: {"total": 15, "secrets": 5, "parameters": 10}
 ```
 
-**Problem**: `ProviderNotFoundError: No suitable provider found`
+🎉 **Congratulations!** You're now using intelligent secret management with automatic cost optimization.
+
+## 🔄 Next Steps
+
+### Move to Cloud (Production Ready)
+
+When you're ready for production, upgrade to cloud storage:
+
 ```bash
-# Solution: Install provider dependencies
-pip install anysecret-io[aws]  # or [gcp], [azure], etc.
+# Create cloud profile (GCP example)
+anysecret config profile-create production --provider gcp
+
+# Switch to production profile
+anysecret config profile-use production
+
+# Import your local config to cloud
+anysecret bulk import .env
+# Secrets → GCP Secret Manager (~$0.40/month each)
+# Parameters → GCS Storage (~$0.01/month each)
+# Automatic 40x cost savings!
+
+# Export production profile for CI/CD
+anysecret config profile-export production --base64 > prod-profile.txt
+# Store this in your CI/CD secrets
 ```
 
-**Problem**: `PermissionDeniedError: Access denied to secret manager`
+### Set Up CI/CD
+
+Add to your GitHub Actions workflow:
+
+```yaml
+- name: Deploy with AnySecret
+  env:
+    ANYSECRET_PROFILE_DATA: ${{ secrets.ANYSECRET_PROFILE }}
+    CI: true
+  run: |
+    pip install anysecret-io
+    anysecret bulk export --output .env.production
+    docker run --env-file .env.production myapp
+```
+
+### Advanced Features
+
 ```bash
-# Solution: Check your cloud provider permissions
-# AWS: Ensure IAM role has SecretsManager access
-# GCP: Ensure service account has Secret Manager access
-# Azure: Ensure managed identity has Key Vault access
+# Search and explore your config
+anysecret read search "database"
+anysecret read tree --prefix "api/"
+
+# Check cost optimization
+anysecret list --format json | jq '
+  .summary | {
+    monthly_cost: (.secrets * 0.40 + .parameters * 0.01),
+    traditional_cost: ((.secrets + .parameters) * 0.40),
+    savings: ((.secrets + .parameters) * 0.40 - (.secrets * 0.40 + .parameters * 0.01))
+  }
+'
+
+# Provider health check
+anysecret providers health
+anysecret status
 ```
 
-**Problem**: Secrets not found in cloud provider
-```python
-# Solution: Check your secret naming and location
-config = await get_config_manager()
-print(f"Provider: {config.provider_name}")
-print(f"Region: {config.region}")
+## 📚 Common First Tasks
 
-# List all available secrets
-secrets = await config.list_secrets()
-print(f"Available secrets: {secrets}")
+### Import from Different Formats
+
+```bash
+# From .env file
+anysecret bulk import .env
+
+# From JSON config  
+anysecret bulk import config.json --format json
+
+# From YAML
+anysecret bulk import settings.yaml --format yaml
+
+# Add prefix to avoid conflicts
+anysecret bulk import legacy.env --prefix "OLD_"
 ```
 
-### Debug Mode
+### Export to Different Formats
 
-Enable detailed logging:
+```bash
+# Basic .env export
+anysecret bulk export --output .env
 
-```python
-import logging
-from anysecret import get_config_manager
+# JSON for structured config
+anysecret bulk export --format json --output config.json
 
-# Enable debug logging
-logging.basicConfig(level=logging.DEBUG)
+# Only parameters (no secrets in file)
+anysecret bulk export --parameters-only --output params.env
 
-config = await get_config_manager()
-# Now you'll see detailed provider detection and configuration logs
+# Everything with secrets (be careful!)
+anysecret bulk export --show-secrets --output full-config.env
 ```
 
-### Getting Help
+### Multi-Environment Setup
 
-- 🐛 **Found a bug?** [Open an issue](https://github.com/anysecret-io/anysecret-lib/issues)
-- 💬 **Need help?** [Join our Discord](https://discord.gg/anysecret)  
-- 📧 **Enterprise support:** support@anysecret.io
+```bash
+# Create profiles for each environment
+anysecret config profile-create dev
+anysecret config profile-create staging  
+anysecret config profile-create prod
+
+# Switch between them
+anysecret config profile-use dev
+anysecret set API_KEY "dev_key_123"
+
+anysecret config profile-use prod
+anysecret set API_KEY "prod_key_456"
+
+# Check current profile
+anysecret config profile-list
+# Output: 
+# dev
+# staging
+# prod (active)
+```
+
+### Classification Control
+
+```bash
+# Check how a key would be classified
+anysecret classify MY_CONFIG_VALUE
+# Output: parameter (no matching secret patterns)
+
+anysecret classify API_SECRET_KEY  
+# Output: secret (matches pattern: *_SECRET_KEY)
+
+# Override classification
+anysecret set PUBLIC_KEY "pk_test_123" --hint parameter  # Force as parameter
+anysecret set LOG_TOKEN "token_123" --hint secret        # Force as secret
+
+# See classification patterns
+anysecret patterns
+```
+
+## 🚨 Common Issues & Solutions
+
+### "Profile not found" error
+```bash
+# Check available profiles
+anysecret config profile-list
+
+# Create if missing
+anysecret config profile-create default
+```
+
+### Secrets showing as *** in terminal
+```bash
+# This is normal security behavior
+# To see actual values (use carefully):
+anysecret get API_KEY --show-secrets
+
+# Or export to file (values are real in files)
+anysecret bulk export --output .env
+cat .env  # Shows real values
+```
+
+### Import not working
+```bash
+# Check file format
+anysecret bulk import myfile.env --dry-run
+
+# Specify format explicitly
+anysecret bulk import config.json --format json
+
+# Check file permissions and path
+ls -la myfile.env
+```
+
+### Cloud provider authentication
+```bash
+# Check provider status
+anysecret providers health
+
+# For GCP: Set up authentication
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# For AWS: Configure credentials
+aws configure
+# or use environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+```
+
+## 🎓 What You've Learned
+
+1. ✅ **Profile Management**: Created and switched between profiles
+2. ✅ **Auto-Classification**: Saw how secrets and parameters are routed automatically
+3. ✅ **Import/Export**: Moved config between files and AnySecret
+4. ✅ **Cost Optimization**: Understanding the 40x savings from smart routing
+5. ✅ **Security**: Secrets are masked in terminal but real in files
+
+## 🚀 Ready for More?
+
+- **[Best Practices](best-practices.md)** - Production patterns and security
+- **[CLI Reference](cli.md)** - Complete command documentation  
+- **[Examples](examples.md)** - Real-world use cases from solo dev to enterprise
+- **[API Reference](api.md)** - Python SDK for programmatic access
+
+## 💡 Pro Tips
+
+```bash
+# Quick commands you'll use daily
+alias as='anysecret'
+alias asl='anysecret list'
+alias ase='anysecret bulk export --output .env'
+
+# Show cost savings
+anysecret list --format json | jq -r '
+  "💰 Monthly cost: $" + ((.summary.secrets * 0.40 + .summary.parameters * 0.01) | tostring) +
+  " (saved $" + (((.summary.secrets + .summary.parameters) * 0.40 - (.summary.secrets * 0.40 + .summary.parameters * 0.01)) | tostring) + "/month vs traditional)"
+'
+
+# Health check everything
+anysecret status && anysecret providers health
+```
 
 ---
 
-**🎉 Congratulations!** You now have universal secret management set up. AnySecret.io will automatically adapt to your environment and keep your secrets secure across all cloud providers.
+**You're ready!** Start with local profiles, then move to cloud when you need production deployment. AnySecret grows with you from hobby project to enterprise scale.
 
-Ready for production? Check out our [Best Practices Guide](best-practices.md) next.
+*Questions? Check the [examples](examples.md) for your specific use case or see the [CLI reference](cli.md) for complete documentation.*

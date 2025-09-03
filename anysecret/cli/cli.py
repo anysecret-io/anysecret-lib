@@ -6,7 +6,10 @@ Built with Typer and modern CLI patterns
 import asyncio
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
+import json
+import base64
+import getpass
 
 import typer
 from rich.console import Console
@@ -59,6 +62,17 @@ def main(
         "--profile", "-p", 
         help="Configuration profile to use",
         envvar="ANYSECRET_PROFILE"
+    ),
+    profile_data: Optional[str] = typer.Option(
+        None,
+        "--profile-data",
+        help="Base64-encoded profile configuration for CI/CD",
+        envvar="ANYSECRET_PROFILE_DATA"
+    ),
+    decrypt: bool = typer.Option(
+        False,
+        "--decrypt",
+        help="Decrypt profile data (requires passphrase via ANYSECRET_PROFILE_PASSPHRASE)"
     ),
     provider: Optional[str] = typer.Option(
         None,
@@ -118,10 +132,16 @@ def main(
     Intelligently routes between secrets and parameters across multiple cloud providers
     with cost optimization and enterprise-grade security.
     """
+    # Process profile data if provided
+    processed_profile_data = None
+    if profile_data:
+        processed_profile_data = _process_profile_data(profile_data, decrypt)
+    
     # Store global options in context for commands to access
     ctx.obj = {
         'config': config,
         'profile': profile,
+        'profile_data': processed_profile_data,
         'provider': provider,
         'region': region,
         'output_format': output_format,
@@ -132,6 +152,40 @@ def main(
         'no_cache': no_cache,
         'timeout': timeout,
     }
+
+
+def _process_profile_data(profile_data: str, decrypt: bool = False) -> Dict[str, Any]:
+    """Process base64-encoded profile data, with optional decryption"""
+    try:
+        # First decode from base64
+        decoded_data = base64.b64decode(profile_data.encode()).decode('utf-8')
+        
+        # If decryption is requested, decrypt the data
+        if decrypt:
+            passphrase = os.getenv('ANYSECRET_PROFILE_PASSPHRASE')
+            if not passphrase:
+                console.print("[red]❌ Decryption requested but ANYSECRET_PROFILE_PASSPHRASE not set[/red]")
+                raise typer.Exit(1)
+            
+            # Import the decrypt function (we'll need to make it accessible)
+            from .commands.config_commands import _decrypt_data
+            decoded_data = _decrypt_data(decoded_data, passphrase)
+        
+        # Parse as JSON
+        profile_config = json.loads(decoded_data)
+        
+        # Validate profile structure
+        required_fields = ['profile_name', 'secret_manager', 'parameter_manager']
+        for field in required_fields:
+            if field not in profile_config:
+                raise ValueError(f"Missing required field: {field}")
+        
+        return profile_config
+        
+    except Exception as e:
+        console.print(f"[red]❌ Failed to process profile data: {e}[/red]")
+        console.print("[dim]Profile data should be base64-encoded JSON from 'anysecret config profile-export'[/dim]")
+        raise typer.Exit(1)
 
 
 # Add all command modules

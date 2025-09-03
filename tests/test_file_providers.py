@@ -5,6 +5,7 @@ Tests for file-based secret managers
 import pytest
 import tempfile
 import json
+import logging
 from pathlib import Path
 from anysecret.providers.file import (
     EnvFileSecretManager,
@@ -140,10 +141,11 @@ SINGLE_QUOTED='single quoted'
 
     def test_missing_env_file_warning(self, caplog):
         """Test warning when env file is missing"""
-        config = {'file_path': '/nonexistent/.env'}
-        EnvFileSecretManager(config)
+        with caplog.at_level(logging.WARNING):
+            config = {'file_path': '/nonexistent/.env'}
+            EnvFileSecretManager(config)
 
-        assert "Env file not found" in caplog.text
+            assert "Env file not found" in caplog.text
 
 
 class TestEncryptedFileSecretManager:

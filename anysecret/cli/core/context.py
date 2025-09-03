@@ -13,6 +13,7 @@ class CLIContext:
     """CLI context holds global configuration and state"""
     config: Optional[Path] = None
     profile: Optional[str] = None
+    profile_data: Optional[Dict[str, Any]] = None
     provider: Optional[str] = None
     region: Optional[str] = None
     output_format: str = "table"
