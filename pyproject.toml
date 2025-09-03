@@ -89,8 +89,9 @@ Repository = "https://github.com/anysecret-io/anysecret-lib"
 [project.scripts]
 anysecret = "anysecret.cli.main:app"
 
-[tool.setuptools]
-packages = ["anysecret", "anysecret.providers", "anysecret.cli"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["anysecret*"]
 
 [tool.setuptools_scm]
 fallback_version = "1.1.0"
