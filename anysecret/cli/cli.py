@@ -41,7 +41,8 @@ app = typer.Typer(
     epilog="Visit https://anysecret.io for documentation and examples",
     no_args_is_help=True,
     rich_markup_mode="rich",
-    context_settings={"help_option_names": ["-h", "--help"]}
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=True
 )
 
 console = Console()
@@ -125,6 +126,11 @@ def main(
         help="Operation timeout in seconds",
         envvar="ANYSECRET_TIMEOUT"
     ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        help="Show version information and exit"
+    ),
 ):
     """
     AnySecret CLI - Universal configuration and secret management
@@ -132,6 +138,16 @@ def main(
     Intelligently routes between secrets and parameters across multiple cloud providers
     with cost optimization and enterprise-grade security.
     """
+    # Handle --version option
+    if version:
+        show_version()
+        raise typer.Exit()
+    
+    # If no command provided and not just showing help, show help  
+    if ctx.invoked_subcommand is None and not version:
+        console.print(ctx.get_help())
+        raise typer.Exit()
+    
     # Process profile data if provided
     processed_profile_data = None
     if profile_data:
