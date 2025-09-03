@@ -256,12 +256,13 @@ secret = await aws_manager.get_secret_with_metadata('api-key')
 - ✅ Modify and distribute freely
 - ⚠️ Must open-source modifications if offering as a service
 
-For commercial licenses without AGPL requirements, visit [anysecret.io/license](https://anysecret.io/license).
+For commercial licenses without AGPL requirements, visit [anysecret.io](https://anysecret.io/).
 
 ## Links
 
-- **Documentation**: [anysecret.io/docs](https://anysecret.io/docs)
+- **Documentation**: [docs.anysecret.io](https://docs.anysecret.io/)
 - **PyPI Package**: [pypi.org/project/anysecret-io](https://pypi.org/project/anysecret-io)
-- **Homepage**: [anysecret.io](https://anysecret.io)
-- **Discord**: [discord.gg/anysecret](https://discord.gg/anysecret)
+- **Homepage**: [anysecret.io](https://anysecret.io/)
+- **LLM Chat Agent**: [chat.anysecret.io](https://chat.anysecret.io/)
+- **Discord**: [discord.gg/Js9pnRuQ](https://discord.gg/Js9pnRuQ)
 - **Issues**: [GitHub Issues](https://github.com/anysecret-io/anysecret-lib/issues)
