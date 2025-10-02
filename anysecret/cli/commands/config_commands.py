@@ -55,6 +55,7 @@ def init_config():
         "azure (Azure Key Vault + App Configuration)",
         "kubernetes (Kubernetes Secrets + ConfigMaps)",
         "vault (HashiCorp Vault)",
+        "cloudflare (Cloudflare Secrets Store - 100 free secrets)",
         "custom (Configure manually)"
     ]
     
@@ -71,7 +72,8 @@ def init_config():
         "4": ("azure", "azure_app_configuration"),
         "5": ("kubernetes", "kubernetes_configmap"),
         "6": ("vault", "file_json"),  # Vault doesn't support parameters
-        "7": (None, None)
+        "7": ("cloudflare", "file_json"),  # Cloudflare Secrets Store (write-only) + local file for parameters
+        "8": (None, None)
     }
     
     secret_type, param_type = provider_map[choice]
@@ -225,6 +227,58 @@ def init_config():
         
         console.print("\n[green]✅ Vault configuration complete[/green]")
         console.print("[yellow]Note: Vault doesn't support parameters, using local file fallback[/yellow]")
+        
+    elif choice == "7":  # Cloudflare
+        console.print("\n[bold cyan]Cloudflare Configuration[/bold cyan]")
+        account_id = Prompt.ask("Cloudflare Account ID")
+        
+        console.print("\n[dim]Authentication options:[/dim]")
+        console.print("1. Use wrangler login (recommended)")
+        console.print("2. Provide API token")
+        
+        auth_choice = Prompt.ask("Authentication method", choices=["1", "2"], default="1")
+        
+        config_dict = {
+            "account_id": account_id,
+            "cache_ttl": 300
+        }
+        
+        if auth_choice == "2":
+            api_token = Prompt.ask("Cloudflare API Token (optional)", default="")
+            if api_token:
+                config_dict["api_token"] = api_token
+        
+        # Cloudflare doesn't support parameters, so use local file
+        params_path = str(config_mgr.data_dir / "parameters.json")
+        
+        profile_config = {
+            "secret_manager": {
+                "type": "cloudflare",
+                "config": config_dict
+            },
+            "parameter_manager": {
+                "type": "file_json",
+                "config": {
+                    "file_path": params_path
+                }
+            }
+        }
+        
+        # Create parameter file
+        Path(params_path).write_text(json.dumps({
+            "cloudflare_account_id": account_id,
+            "environment": "production"
+        }, indent=2))
+        
+        console.print("\n[green]✅ Cloudflare configuration complete[/green]")
+        console.print("[yellow]Note: Cloudflare secrets are only accessible at runtime within CF Workers (like GitHub Actions secrets).[/yellow]")
+        console.print("[yellow]Note: Use 'anysecret set' to push secrets, then access via env.SECRET_NAME in your Worker.[/yellow]")
+        console.print("[yellow]Note: Using local file for parameters since Cloudflare doesn't support parameter storage.[/yellow]")
+        
+        if auth_choice == "1":
+            console.print("\n[bold]Next steps:[/bold]")
+            console.print("• Authenticate with Cloudflare: [cyan]wrangler auth login[/cyan]")
+            console.print("• Verify authentication: [cyan]wrangler whoami[/cyan]")
         
     else:  # Custom
         console.print("\n[yellow]Manual configuration selected[/yellow]")
@@ -437,7 +491,7 @@ def validate_config():
             param_type = param_mgr.get("type", "unknown") 
             
             # Check if types are valid
-            valid_secret_types = ["aws", "gcp", "azure", "vault", "kubernetes", "env_file", "encrypted_file"]
+            valid_secret_types = ["aws", "gcp", "azure", "vault", "kubernetes", "cloudflare", "env_file", "encrypted_file"]
             valid_param_types = ["aws_parameter_store", "gcp_config_connector", "azure_app_configuration", 
                                 "kubernetes_configmap", "file_json", "file_yaml"]
             
@@ -730,6 +784,7 @@ def create_profile(name: str):
             "azure (Azure Key Vault + App Configuration)",
             "kubernetes (Kubernetes Secrets + ConfigMaps)",
             "vault (HashiCorp Vault + local file for parameters)",
+            "cloudflare (Cloudflare Secrets Store - 100 free secrets)",
             "custom (Manual configuration)"
         ]
         
@@ -913,6 +968,59 @@ def create_profile(name: str):
             }, indent=2))
             
             console.print("\n[yellow]Note: Vault doesn't support parameters, using local file[/yellow]")
+        
+        elif choice == "7":  # Cloudflare
+            console.print(f"\n[bold cyan]Cloudflare Configuration for '{name}'[/bold cyan]")
+            account_id = Prompt.ask("Cloudflare Account ID")
+            
+            console.print("\n[dim]Authentication options:[/dim]")
+            console.print("1. Use wrangler login (recommended)")
+            console.print("2. Provide API token")
+            
+            auth_choice = Prompt.ask("Authentication method", choices=["1", "2"], default="1")
+            
+            config_dict = {
+                "account_id": account_id,
+                "cache_ttl": 300
+            }
+            
+            if auth_choice == "2":
+                api_token = Prompt.ask("Cloudflare API Token (optional)", default="")
+                if api_token:
+                    config_dict["api_token"] = api_token
+            
+            # Cloudflare doesn't support parameters, so use local file
+            params_path = str(config_mgr.data_dir / f"parameters-{name}.json")
+            
+            profile_config = {
+                "secret_manager": {
+                    "type": "cloudflare",
+                    "config": config_dict
+                },
+                "parameter_manager": {
+                    "type": "file_json",
+                    "config": {
+                        "file_path": params_path
+                    }
+                }
+            }
+            
+            # Create parameter file
+            Path(params_path).write_text(json.dumps({
+                "profile": name,
+                "cloudflare_account_id": account_id,
+                "environment": "production"
+            }, indent=2))
+            
+            console.print("\n[green]✅ Cloudflare configuration complete[/green]")
+            console.print("[yellow]Note: Cloudflare secrets are runtime-only (accessible in CF Workers via env variables).[/yellow]")
+            console.print("[yellow]Note: Use 'anysecret set' to push secrets, access them in Workers via env.SECRET_NAME.[/yellow]")
+            console.print("[yellow]Note: Using local file for parameters (Cloudflare doesn't support parameters).[/yellow]")
+            
+            if auth_choice == "1":
+                console.print("\n[bold]Next steps after profile creation:[/bold]")
+                console.print("• Authenticate: [cyan]wrangler auth login[/cyan]")
+                console.print("• Verify: [cyan]wrangler whoami[/cyan]")
         
         else:  # Custom
             console.print(f"\n[yellow]Manual configuration for '{name}'[/yellow]")

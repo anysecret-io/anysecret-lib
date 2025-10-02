@@ -18,6 +18,7 @@ class SecretManagerType(Enum):
     AWS = "aws"
     AZURE = "azure"
     VAULT = "vault"
+    CLOUDFLARE = "cloudflare"
     ENCRYPTED_FILE = "encrypted_file"
     ENV_FILE = "env_file"
     KUBERNETES = "kubernetes"# For development only
@@ -243,6 +244,7 @@ class SecretManagerFactory:
         SecretManagerType.AWS: 'anysecret.providers.aws.AwsSecretManager',
         SecretManagerType.AZURE: 'anysecret.providers.azure.AzureSecretManager',
         SecretManagerType.VAULT: 'anysecret.providers.vault.VaultSecretManager',
+        SecretManagerType.CLOUDFLARE: 'anysecret.providers.cloudflare.CloudflareSecretManager',
         SecretManagerType.ENCRYPTED_FILE: 'anysecret.providers.file.EncryptedFileSecretManager',
         SecretManagerType.ENV_FILE: 'anysecret.providers.file.EnvFileSecretManager',
         SecretManagerType.KUBERNETES: 'anysecret.providers.kubernetes.KubernetesSecretManager',
@@ -318,6 +320,17 @@ class SecretManagerFactory:
             import kubernetes  # Add this block
             available.append(SecretManagerType.KUBERNETES)
         except ImportError:
+            pass
+
+        # Check for Cloudflare Wrangler CLI
+        try:
+            import subprocess
+            result = subprocess.run(['wrangler', '--version'], capture_output=True, timeout=5)
+            if result.returncode == 0:
+                available.append(SecretManagerType.CLOUDFLARE)
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+            # Wrangler CLI not available - this is expected if not installed
+            # Note: Wrangler must be installed separately via npm: npm install -g wrangler
             pass
 
         return available
