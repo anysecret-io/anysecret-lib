@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/anysecret-io.svg)](https://pypi.org/project/anysecret-io/)
 [![Python Support](https://img.shields.io/pypi/pyversions/anysecret-io.svg)](https://pypi.org/project/anysecret-io/)
 [![Tests](https://github.com/anysecret-io/anysecret-lib/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/anysecret-io/anysecret-lib/actions/workflows/test.yml)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Open source Python library for universal secret and configuration management across all major cloud providers.**
 
@@ -250,13 +250,15 @@ secret = await aws_manager.get_secret_with_metadata('api-key')
 
 ## License
 
-**GNU Affero General Public License v3.0 (AGPL-3.0)**
+**MIT License**
 
 - ✅ Free for all users and commercial use
 - ✅ Modify and distribute freely
-- ⚠️ Must open-source modifications if offering as a service
+- ✅ Use in proprietary software
+- ✅ No copyleft requirements
+- ✅ Private use and commercial distribution allowed
 
-For commercial licenses without AGPL requirements, visit [anysecret.io](https://anysecret.io/).
+AnySecret is and will always be free and open source under the MIT license.
 
 ## Links
 

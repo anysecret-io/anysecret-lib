@@ -7,7 +7,7 @@ name = "anysecret-io"
 dynamic = ["version"]
 description = "Universal secret manager for applications and CI/CD tools with CLI interface and multi-cloud support"
 authors = [{name = "AnySecret.io Team", email = "hello@anysecret.io"}]
-license = {text = "AGPL-3.0-or-later"}
+license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
@@ -16,7 +16,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Systems Administration",
     "Topic :: Security",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
