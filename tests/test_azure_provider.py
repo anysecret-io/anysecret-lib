@@ -135,7 +135,7 @@ class TestAzureSecretManager:
         """Test getting non-existent secret"""
         mock_client, mock_client_class, mock_default_cred, mock_client_cred = mock_azure_dependencies
 
-        from azure.core.exceptions import ResourceNotFoundError
+        from anysecret.providers.azure import ResourceNotFoundError
         mock_client.get_secret.side_effect = ResourceNotFoundError('Secret not found')
 
         config = {'vault_url': 'https://test-vault.vault.azure.net/'}
@@ -149,7 +149,7 @@ class TestAzureSecretManager:
         """Test access denied error"""
         mock_client, mock_client_class, mock_default_cred, mock_client_cred = mock_azure_dependencies
 
-        from azure.core.exceptions import HttpResponseError
+        from anysecret.providers.azure import HttpResponseError
         response = Mock()
         response.status_code = 403
         error = HttpResponseError(response=response)
@@ -262,7 +262,7 @@ class TestAzureSecretManager:
         """Test health check failure"""
         mock_client, mock_client_class, mock_default_cred, mock_client_cred = mock_azure_dependencies
 
-        from azure.core.exceptions import HttpResponseError
+        from anysecret.providers.azure import HttpResponseError
         response = Mock()
         response.status_code = 403
         mock_client.list_properties_of_secrets.side_effect = HttpResponseError(response=response)
@@ -302,7 +302,7 @@ class TestAzureSecretManager:
         """Test creating secret that conflicts"""
         mock_client, mock_client_class, mock_default_cred, mock_client_cred = mock_azure_dependencies
 
-        from azure.core.exceptions import HttpResponseError
+        from anysecret.providers.azure import HttpResponseError
         response = Mock()
         response.status_code = 409
         mock_client.set_secret.side_effect = HttpResponseError(response=response)
@@ -334,7 +334,7 @@ class TestAzureSecretManager:
         """Test updating non-existent secret"""
         mock_client, mock_client_class, mock_default_cred, mock_client_cred = mock_azure_dependencies
 
-        from azure.core.exceptions import ResourceNotFoundError
+        from anysecret.providers.azure import ResourceNotFoundError
         mock_client.set_secret.side_effect = ResourceNotFoundError('Secret not found')
 
         config = {'vault_url': 'https://test-vault.vault.azure.net/'}

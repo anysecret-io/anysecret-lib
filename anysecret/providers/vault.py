@@ -12,6 +12,20 @@ try:
     HAS_VAULT = True
 except ImportError:
     HAS_VAULT = False
+    # Create placeholder classes for when Vault dependencies are not available
+    class hvac:
+        class Client:
+            def __init__(self, **kwargs):
+                pass
+    
+    class VaultError(Exception):
+        pass
+    
+    class InvalidPath(Exception):
+        pass
+    
+    class Forbidden(Exception):
+        pass
 
 from ..secret_manager import (
     BaseSecretManager,

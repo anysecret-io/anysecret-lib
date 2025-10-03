@@ -277,17 +277,21 @@ class TestAwsParameterStoreManager:
     @pytest.fixture
     def mock_aws_dependencies(self):
         """Mock AWS dependencies"""
-        with patch('boto3.Session') as mock_session_class:
+        with patch('anysecret.providers.aws_parameter_manager.HAS_AWS', True):
             mock_session = Mock()
             mock_client = Mock()
             mock_session.client.return_value = mock_client
-            mock_session_class.return_value = mock_session
-
-            yield mock_client, mock_session, mock_session_class
+            
+            # Mock the boto3 module in the provider namespace
+            aws_module = __import__('anysecret.providers.aws_parameter_manager', fromlist=['boto3'])
+            with patch.object(aws_module, 'boto3', create=True) as mock_boto3:
+                mock_boto3.Session.return_value = mock_session
+                
+                yield mock_client, mock_session, mock_boto3
 
     def test_init_without_boto3_raises_error(self):
         """Test initialization without boto3 raises error"""
-        with patch.dict('sys.modules', {'boto3': None}):
+        with patch('anysecret.providers.aws_parameter_manager.HAS_AWS', False):
             with pytest.raises(ParameterManagerError, match="boto3 is required"):
                 AwsParameterStoreManager({})
 
@@ -402,7 +406,7 @@ class TestAwsParameterStoreManager:
         """Test parameter not found error"""
         mock_client, mock_session, mock_boto3 = mock_aws_dependencies
 
-        from botocore.exceptions import ClientError
+        from anysecret.providers.aws_parameter_manager import ClientError
         error_response = {
             'Error': {
                 'Code': 'ParameterNotFound',

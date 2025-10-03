@@ -13,6 +13,25 @@ try:
     HAS_AZURE = True
 except ImportError:
     HAS_AZURE = False
+    # Create placeholder classes for when Azure dependencies are not available
+    class SecretClient:
+        pass
+    
+    class DefaultAzureCredential:
+        pass
+    
+    class ClientSecretCredential:
+        pass
+    
+    class ResourceNotFoundError(Exception):
+        pass
+    
+    class HttpResponseError(Exception):
+        def __init__(self, message=None, response=None, **kwargs):
+            self.response = response
+            # Extract status_code from response if available
+            self.status_code = getattr(response, 'status_code', 500) if response else 500
+            super().__init__(message or "HTTP error")
 
 from ..secret_manager import (
     BaseSecretManager,

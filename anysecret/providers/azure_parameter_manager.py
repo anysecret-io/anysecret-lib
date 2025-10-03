@@ -5,6 +5,31 @@ import json
 from typing import Any, Dict, List, Optional
 import logging
 
+try:
+    from azure.appconfiguration import AzureAppConfigurationClient, ConfigurationSetting
+    from azure.identity import DefaultAzureCredential
+    from azure.core.exceptions import ResourceNotFoundError, HttpResponseError
+    HAS_AZURE = True
+except ImportError:
+    HAS_AZURE = False
+    # Create placeholder classes for when Azure dependencies are not available
+    class AzureAppConfigurationClient:
+        pass
+    
+    class ConfigurationSetting:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+    
+    class DefaultAzureCredential:
+        pass
+    
+    class ResourceNotFoundError(Exception):
+        pass
+    
+    class HttpResponseError(Exception):
+        pass
+
 from ..parameter_manager import (
     BaseParameterManager,
     ParameterValue,
@@ -20,22 +45,19 @@ class AzureAppConfigurationManager(BaseParameterManager):
     """Parameter manager using Azure App Configuration"""
 
     def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
-
-        try:
-            from azure.appconfiguration import AzureAppConfigurationClient
-            from azure.identity import DefaultAzureCredential
-            from azure.core.exceptions import ResourceNotFoundError, HttpResponseError
-
-            self.AzureAppConfigurationClient = AzureAppConfigurationClient
-            self.DefaultAzureCredential = DefaultAzureCredential
-            self.ResourceNotFoundError = ResourceNotFoundError
-            self.HttpResponseError = HttpResponseError
-        except ImportError:
+        if not HAS_AZURE:
             raise ParameterManagerError(
                 "azure-appconfiguration and azure-identity are required. "
                 "Install with: pip install azure-appconfiguration azure-identity"
             )
+            
+        super().__init__(config)
+
+        # Store references to the imported classes
+        self.AzureAppConfigurationClient = AzureAppConfigurationClient
+        self.DefaultAzureCredential = DefaultAzureCredential
+        self.ResourceNotFoundError = ResourceNotFoundError
+        self.HttpResponseError = HttpResponseError
 
         # Configuration options
         self.connection_string = config.get('connection_string')
@@ -208,7 +230,6 @@ class AzureAppConfigurationManager(BaseParameterManager):
                 content_type = metadata.get('content_type', 'text/plain')
 
             # Create configuration setting
-            from azure.appconfiguration import ConfigurationSetting
             setting = ConfigurationSetting(
                 key=full_key,
                 label=self.label,
@@ -248,7 +269,6 @@ class AzureAppConfigurationManager(BaseParameterManager):
                 content_type = metadata.get('content_type', 'text/plain')
 
             # Create/update configuration setting
-            from azure.appconfiguration import ConfigurationSetting
             setting = ConfigurationSetting(
                 key=full_key,
                 label=self.label,

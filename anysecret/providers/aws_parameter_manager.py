@@ -5,6 +5,29 @@ import json
 from typing import Any, Dict, List, Optional
 import logging
 
+try:
+    import boto3
+    from botocore.exceptions import ClientError, NoCredentialsError
+    HAS_AWS = True
+except ImportError:
+    HAS_AWS = False
+    # Create placeholder classes for when AWS dependencies are not available
+    class boto3:
+        class Session:
+            def __init__(self, **kwargs):
+                pass
+            def client(self, service_name, **kwargs):
+                return None
+    
+    class ClientError(Exception):
+        def __init__(self, error_response=None, operation_name=None):
+            self.response = error_response or {'Error': {'Code': 'UnknownError', 'Message': 'Unknown error'}}
+            self.operation_name = operation_name
+            super().__init__()
+    
+    class NoCredentialsError(Exception):
+        pass
+
 from ..parameter_manager import (
     BaseParameterManager,
     ParameterValue,
@@ -20,17 +43,10 @@ class AwsParameterStoreManager(BaseParameterManager):
     """Parameter manager for AWS Systems Manager Parameter Store"""
 
     def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
-
-        # Check for boto3 dependency
-        try:
-            import boto3
-            from botocore.exceptions import ClientError, NoCredentialsError
-            self.boto3 = boto3
-            self.ClientError = ClientError
-            self.NoCredentialsError = NoCredentialsError
-        except ImportError:
+        if not HAS_AWS:
             raise ParameterManagerError("boto3 is required for AWS Parameter Store. Install with: pip install boto3")
+            
+        super().__init__(config)
 
         self.region = config.get('region', 'us-east-1')
         self.prefix = config.get('prefix', '')  # Optional prefix for all parameters
@@ -46,7 +62,7 @@ class AwsParameterStoreManager(BaseParameterManager):
             if 'aws_session_token' in config:
                 session_config['aws_session_token'] = config['aws_session_token']
 
-            self.session = self.boto3.Session(**session_config)
+            self.session = boto3.Session(**session_config)
             self.ssm_client = self.session.client('ssm', region_name=self.region)
 
         except Exception as e:
@@ -108,7 +124,7 @@ class AwsParameterStoreManager(BaseParameterManager):
 
             return ParameterValue(key, value, metadata)
 
-        except self.ClientError as e:
+        except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'ParameterNotFound':
                 raise ParameterNotFoundError(f"Parameter '{key}' not found in AWS Parameter Store")
@@ -216,7 +232,7 @@ class AwsParameterStoreManager(BaseParameterManager):
 
             return True
 
-        except self.ClientError as e:
+        except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'ParameterAlreadyExists':
                 raise ParameterManagerError(f"Parameter '{key}' already exists")
@@ -272,7 +288,7 @@ class AwsParameterStoreManager(BaseParameterManager):
 
             return True
 
-        except self.ClientError as e:
+        except ClientError as e:
             raise ParameterAccessError(f"Failed to update parameter: {e.response['Error']['Message']}")
         except Exception as e:
             raise ParameterAccessError(f"Failed to update parameter '{key}': {e}")
@@ -291,7 +307,7 @@ class AwsParameterStoreManager(BaseParameterManager):
             )
             return True
 
-        except self.ClientError as e:
+        except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'ParameterNotFound':
                 raise ParameterNotFoundError(f"Parameter '{key}' not found")

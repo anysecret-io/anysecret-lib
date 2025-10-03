@@ -18,40 +18,31 @@ class TestAzureAppConfigurationManager:
     @pytest.fixture
     def mock_azure_dependencies(self):
         """Mock Azure dependencies"""
-        mock_client = Mock()
-        mock_credential = Mock()
-        mock_client_class = Mock(return_value=mock_client)
-        mock_credential_class = Mock(return_value=mock_credential)
+        with patch('anysecret.providers.azure_parameter_manager.HAS_AZURE', True):
+            mock_client = Mock()
+            mock_credential = Mock()
+            
+            # Create a mock client class with from_connection_string method
+            mock_client_class = Mock(return_value=mock_client)
+            mock_client_class.from_connection_string.return_value = mock_client
+            
+            mock_credential_class = Mock(return_value=mock_credential)
 
-        def mock_init(self, config):
-            self.client = mock_client
-            self.AzureAppConfigurationClient = mock_client_class
-            self.DefaultAzureCredential = mock_credential_class
-            self.ResourceNotFoundError = Exception
-            self.HttpResponseError = Exception
-            self.connection_string = config.get('connection_string')
-            self.endpoint = config.get('endpoint')
-            self.label = config.get('label', 'Production')
-            self.prefix = config.get('prefix', '')
-            self.read_only = config.get('read_only', False)
-
-            if not self.connection_string and not self.endpoint:
-                raise ParameterManagerError(
-                    "Either 'connection_string' or 'endpoint' is required for Azure App Configuration"
-                )
-
-        with patch.object(AzureAppConfigurationManager, '__init__', mock_init):
-            yield mock_client, mock_client_class, mock_credential_class
+            # Mock the Azure classes in the provider module
+            azure_module = __import__('anysecret.providers.azure_parameter_manager', fromlist=['AzureAppConfigurationClient'])
+            with patch.object(azure_module, 'AzureAppConfigurationClient', mock_client_class), \
+                 patch.object(azure_module, 'DefaultAzureCredential', mock_credential_class):
+                yield mock_client
 
     def test_init_without_azure_raises_error(self):
         """Test initialization without Azure dependencies raises error"""
-        with patch.dict('sys.modules', {'azure.appconfiguration': None}):
+        with patch('anysecret.providers.azure_parameter_manager.HAS_AZURE', False):
             with pytest.raises(ParameterManagerError, match="azure-appconfiguration and azure-identity are required"):
                 AzureAppConfigurationManager({})
 
     def test_init_without_connection_or_endpoint_raises_error(self, mock_azure_dependencies):
         """Test initialization without connection string or endpoint raises error"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         config = {}
         with pytest.raises(ParameterManagerError, match="Either 'connection_string' or 'endpoint' is required"):
@@ -59,7 +50,7 @@ class TestAzureAppConfigurationManager:
 
     def test_init_with_connection_string(self, mock_azure_dependencies):
         """Test initialization with connection string"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         config = {'connection_string': 'Endpoint=https://test.azconfig.io;Id=test;Secret=test'}
         manager = AzureAppConfigurationManager(config)
@@ -71,7 +62,7 @@ class TestAzureAppConfigurationManager:
 
     def test_init_with_endpoint(self, mock_azure_dependencies):
         """Test initialization with endpoint"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         config = {
             'endpoint': 'https://test.azconfig.io',
@@ -88,7 +79,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_get_parameter_with_metadata_string(self, mock_azure_dependencies):
         """Test getting string parameter"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         # Mock configuration setting
         mock_setting = Mock()
@@ -122,7 +113,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_get_parameter_json_value(self, mock_azure_dependencies):
         """Test getting parameter with JSON value"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_setting = Mock()
         mock_setting.value = '{"host": "localhost", "port": 5432}'
@@ -146,7 +137,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_get_parameter_with_prefix(self, mock_azure_dependencies):
         """Test getting parameter with prefix"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_setting = Mock()
         mock_setting.value = 'test_value'
@@ -175,7 +166,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_get_parameter_not_found(self, mock_azure_dependencies):
         """Test parameter not found error"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_client.get_configuration_setting.side_effect = Exception("ResourceNotFoundError")
 
@@ -189,7 +180,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_list_parameters(self, mock_azure_dependencies):
         """Test listing parameters"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         # Mock configuration settings
         mock_setting1 = Mock()
@@ -219,7 +210,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_list_parameters_with_prefix_filter(self, mock_azure_dependencies):
         """Test listing parameters with prefix filter"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_setting1 = Mock()
         mock_setting1.key = 'database_host'
@@ -244,7 +235,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_health_check_success(self, mock_azure_dependencies):
         """Test successful health check"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_client.list_configuration_settings.return_value = []
 
@@ -262,7 +253,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_health_check_failure(self, mock_azure_dependencies):
         """Test health check failure"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_client.list_configuration_settings.side_effect = Exception("Access denied")
 
@@ -276,7 +267,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_create_parameter(self, mock_azure_dependencies):
         """Test creating a new parameter"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         # Mock that parameter doesn't exist
         mock_client.get_configuration_setting.side_effect = Exception("ResourceNotFoundError")
@@ -286,7 +277,7 @@ class TestAzureAppConfigurationManager:
         manager = AzureAppConfigurationManager(config)
         manager.ResourceNotFoundError = Exception
 
-        with patch('azure.appconfiguration.ConfigurationSetting') as mock_setting_class:
+        with patch('anysecret.providers.azure_parameter_manager.ConfigurationSetting') as mock_setting_class:
             result = await manager.create_parameter('new_param', 'test_value')
 
         assert result is True
@@ -295,7 +286,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_create_parameter_json(self, mock_azure_dependencies):
         """Test creating parameter with JSON value"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_client.get_configuration_setting.side_effect = Exception("ResourceNotFoundError")
 
@@ -303,7 +294,7 @@ class TestAzureAppConfigurationManager:
         manager = AzureAppConfigurationManager(config)
         manager.ResourceNotFoundError = Exception
 
-        with patch('azure.appconfiguration.ConfigurationSetting') as mock_setting_class:
+        with patch('anysecret.providers.azure_parameter_manager.ConfigurationSetting') as mock_setting_class:
             result = await manager.create_parameter('config', {'host': 'localhost', 'port': 5432})
 
         assert result is True
@@ -316,14 +307,14 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_update_parameter(self, mock_azure_dependencies):
         """Test updating existing parameter"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_client.set_configuration_setting.return_value = None
 
         config = {'connection_string': 'test_connection'}
         manager = AzureAppConfigurationManager(config)
 
-        with patch('azure.appconfiguration.ConfigurationSetting') as mock_setting_class:
+        with patch('anysecret.providers.azure_parameter_manager.ConfigurationSetting') as mock_setting_class:
             result = await manager.update_parameter('existing_param', 'new_value')
 
         assert result is True
@@ -332,7 +323,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_delete_parameter(self, mock_azure_dependencies):
         """Test deleting parameter"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_client.delete_configuration_setting.return_value = None
 
@@ -350,7 +341,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_delete_parameter_not_found(self, mock_azure_dependencies):
         """Test deleting non-existent parameter"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         mock_client.delete_configuration_setting.side_effect = Exception("ResourceNotFoundError")
 
@@ -364,7 +355,7 @@ class TestAzureAppConfigurationManager:
     @pytest.mark.asyncio
     async def test_read_only_mode(self, mock_azure_dependencies):
         """Test read-only mode prevents writes"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         config = {'connection_string': 'test_connection', 'read_only': True}
         manager = AzureAppConfigurationManager(config)
@@ -380,7 +371,7 @@ class TestAzureAppConfigurationManager:
 
     def test_repr(self, mock_azure_dependencies):
         """Test string representation"""
-        mock_client, mock_client_class, mock_credential_class = mock_azure_dependencies
+        mock_client = mock_azure_dependencies
 
         config = {'connection_string': 'test_connection', 'label': 'Development'}
         manager = AzureAppConfigurationManager(config)

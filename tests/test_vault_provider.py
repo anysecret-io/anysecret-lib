@@ -19,10 +19,12 @@ class TestVaultSecretManager:
     def mock_vault_dependencies(self):
         """Mock Vault dependencies"""
         with patch('anysecret.providers.vault.HAS_VAULT', True):
-            with patch('hvac.Client') as mock_client_class:
+            # Mock the hvac module in the provider namespace
+            vault_module = __import__('anysecret.providers.vault', fromlist=['hvac'])
+            with patch.object(vault_module, 'hvac', create=True) as mock_hvac:
                 # Mock client instance
                 mock_client = Mock()
-                mock_client_class.return_value = mock_client
+                mock_hvac.Client.return_value = mock_client
                 mock_client.is_authenticated.return_value = True
                 mock_client.sys.is_initialized.return_value = True
                 mock_client.sys.is_sealed.return_value = False
@@ -34,7 +36,7 @@ class TestVaultSecretManager:
                 mock_client.auth.userpass = Mock()
                 mock_client.auth.jwt = Mock()
 
-                yield mock_client, mock_client_class
+                yield mock_client, mock_hvac
 
     def test_init_without_vault_raises_error(self):
         """Test initialization without Vault dependencies raises error"""
@@ -239,7 +241,7 @@ class TestVaultSecretManager:
         """Test getting non-existent secret"""
         mock_client, mock_client_class = mock_vault_dependencies
 
-        from hvac.exceptions import InvalidPath
+        from anysecret.providers.vault import InvalidPath
         mock_client.secrets.kv.v2.read_secret_version.side_effect = InvalidPath('Path not found')
 
         config = {'token': 'test-token'}
@@ -253,7 +255,7 @@ class TestVaultSecretManager:
         """Test access denied error"""
         mock_client, mock_client_class = mock_vault_dependencies
 
-        from hvac.exceptions import Forbidden
+        from anysecret.providers.vault import Forbidden
         mock_client.secrets.kv.v2.read_secret_version.side_effect = Forbidden('Access denied')
 
         config = {'token': 'test-token'}

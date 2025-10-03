@@ -13,6 +13,18 @@ try:
     HAS_AWS = True
 except ImportError:
     HAS_AWS = False
+    # Create placeholder classes for when AWS dependencies are not available
+    class ClientError(Exception):
+        def __init__(self, error_response=None, operation_name=None):
+            self.response = error_response or {'Error': {'Code': 'UnknownError', 'Message': 'Unknown error'}}
+            self.operation_name = operation_name
+            super().__init__()
+    
+    class NoCredentialsError(Exception):
+        pass
+    
+    class PartialCredentialsError(Exception):
+        pass
 
 from ..secret_manager import (
     BaseSecretManager,

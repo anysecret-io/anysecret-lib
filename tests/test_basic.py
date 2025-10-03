@@ -22,7 +22,7 @@ class TestSmokeBasicComponents:
     def test_secret_manager_types_exist(self):
         """Test all expected secret manager types are available"""
         expected_types = {
-            'gcp', 'aws', 'azure', 'vault', 'encrypted_file', 'env_file', 'kubernetes'
+            'gcp', 'aws', 'azure', 'vault', 'cloudflare', 'encrypted_file', 'env_file', 'kubernetes'
         }
         actual_types = {t.value for t in SecretManagerType}
         assert expected_types == actual_types

@@ -188,7 +188,7 @@ class TestErrorHandling:
         result = runner.invoke(app, ["invalid-command"])
         
         assert result.exit_code != 0
-        assert "No such command" in result.stderr
+        assert "No such command" in result.output
 
     def test_missing_required_argument(self):
         """Test missing required argument handling"""

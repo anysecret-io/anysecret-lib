@@ -11,6 +11,9 @@ from anysecret.secret_manager import (
     SecretManagerConnectionException
 )
 
+# Import exceptions from provider module to ensure compatibility
+from anysecret.providers.aws import ClientError, NoCredentialsError, PartialCredentialsError
+
 
 class TestAwsSecretManager:
     """Test AwsSecretManager"""
@@ -19,14 +22,17 @@ class TestAwsSecretManager:
     def mock_aws_dependencies(self):
         """Mock AWS dependencies"""
         with patch('anysecret.providers.aws.HAS_AWS', True):
-            with patch('boto3.Session') as mock_session_class:
-                # Mock session and client
-                mock_session = Mock()
-                mock_client = Mock()
-                mock_session.client.return_value = mock_client
-                mock_session_class.return_value = mock_session
-
-                yield mock_client, mock_session, mock_session_class
+            # Create mock objects first
+            mock_session = Mock()
+            mock_client = Mock()
+            mock_session.client.return_value = mock_client
+            
+            # Mock the imported boto3 module in the provider namespace
+            aws_module = __import__('anysecret.providers.aws', fromlist=['boto3'])
+            with patch.object(aws_module, 'boto3', create=True) as mock_boto3:
+                mock_boto3.Session.return_value = mock_session
+                
+                yield mock_client, mock_session, mock_boto3
 
     def test_init_without_aws_raises_error(self):
         """Test initialization without AWS dependencies raises error"""
@@ -78,9 +84,8 @@ class TestAwsSecretManager:
 
     def test_init_credential_error(self, mock_aws_dependencies):
         """Test initialization with credential errors"""
-        mock_client, mock_session, mock_session_class = mock_aws_dependencies
-
-        from botocore.exceptions import NoCredentialsError
+        mock_client, mock_session, mock_boto3 = mock_aws_dependencies
+        
         # Make the session.client() call raise the error instead
         mock_session.client.side_effect = NoCredentialsError()
 
@@ -160,7 +165,6 @@ class TestAwsSecretManager:
         """Test getting non-existent secret"""
         mock_client, mock_session, mock_boto3 = mock_aws_dependencies
 
-        from botocore.exceptions import ClientError
         error_response = {
             'Error': {
                 'Code': 'ResourceNotFoundException',
@@ -180,7 +184,6 @@ class TestAwsSecretManager:
         """Test access denied error"""
         mock_client, mock_session, mock_boto3 = mock_aws_dependencies
 
-        from botocore.exceptions import ClientError
         error_response = {
             'Error': {
                 'Code': 'AccessDeniedException',
@@ -278,7 +281,6 @@ class TestAwsSecretManager:
         """Test list secrets with access denied"""
         mock_client, mock_session, mock_boto3 = mock_aws_dependencies
 
-        from botocore.exceptions import ClientError
         error_response = {
             'Error': {
                 'Code': 'AccessDeniedException',
@@ -349,7 +351,6 @@ class TestAwsSecretManager:
         """Test health check failure"""
         mock_client, mock_session, mock_boto3 = mock_aws_dependencies
 
-        from botocore.exceptions import ClientError
         error_response = {
             'Error': {
                 'Code': 'UnauthorizedOperation',
@@ -387,7 +388,6 @@ class TestAwsSecretManager:
         """Test creating secret that already exists"""
         mock_client, mock_session, mock_boto3 = mock_aws_dependencies
 
-        from botocore.exceptions import ClientError
         error_response = {
             'Error': {
                 'Code': 'ResourceExistsException',
@@ -423,7 +423,6 @@ class TestAwsSecretManager:
         """Test updating non-existent secret"""
         mock_client, mock_session, mock_boto3 = mock_aws_dependencies
 
-        from botocore.exceptions import ClientError
         error_response = {
             'Error': {
                 'Code': 'ResourceNotFoundException',
